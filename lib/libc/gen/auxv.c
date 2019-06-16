@@ -299,9 +299,9 @@ _elf_aux_info(int aux, void *buf, int buflen)
 			res = EINVAL;
 		break;
 	case AT_CANARY:
-		if (canary_len >= buflen) {
+		if (buflen >= canary_len) {
 			if (canary != NULL) {
-				memcpy(buf, canary, buflen);
+				memcpy(buf, canary, canary_len);
 				memset(canary, 0, canary_len);
 				canary = NULL;
 				res = 0;
@@ -351,7 +351,7 @@ _elf_aux_info(int aux, void *buf, int buflen)
 		}
 		break;
 	case AT_HWCAP:
-		if (buflen == sizeof(u_long)) {
+		if (buflen >= sizeof(u_long)) {
 			if (hwcap_present) {
 				*(u_long *)buf = hwcap;
 				res = 0;
@@ -361,7 +361,7 @@ _elf_aux_info(int aux, void *buf, int buflen)
 			res = EINVAL;
 		break;
 	case AT_HWCAP2:
-		if (buflen == sizeof(u_long)) {
+		if (buflen >= sizeof(u_long)) {
 			if (hwcap2_present) {
 				*(u_long *)buf = hwcap2;
 				res = 0;
@@ -371,7 +371,7 @@ _elf_aux_info(int aux, void *buf, int buflen)
 			res = EINVAL;
 		break;
 	case AT_NCPUS:
-		if (buflen == sizeof(int)) {
+		if (buflen >= sizeof(int)) {
 			if (ncpus != 0) {
 				*(int *)buf = ncpus;
 				res = 0;
@@ -381,9 +381,9 @@ _elf_aux_info(int aux, void *buf, int buflen)
 			res = EINVAL;
 		break;
 	case AT_PAGESIZES:
-		if (pagesizes_len >= buflen) {
+		if (buflen >= pagesizes_len) {
 			if (pagesizes != NULL) {
-				memcpy(buf, pagesizes, buflen);
+				memcpy(buf, pagesizes, pagesizes_len);
 				res = 0;
 			} else
 				res = ENOENT;
