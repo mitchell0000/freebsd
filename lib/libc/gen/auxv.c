@@ -34,6 +34,7 @@ __FBSDID("$FreeBSD$");
 #include <errno.h>
 #include <link.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <string.h>
 #include <sys/auxv.h>
 #include "un-namespace.h"
@@ -68,7 +69,7 @@ __init_elf_aux_vector(void)
 
 static pthread_once_t aux_once = PTHREAD_ONCE_INIT;
 static int pagesize, osreldate, canary_len, ncpus, pagesizes_len, bsdflags;
-static int hwcap_present, hwcap2_present;
+static bool hwcap_present, hwcap2_present;
 static char *canary, *pagesizes, *execpath;
 static void *ps_strings, *timekeep;
 static u_long hwcap, hwcap2;
@@ -104,13 +105,17 @@ init_aux(void)
 			break;
 
 		case AT_HWCAP:
-			hwcap_present = 1;
+			hwcap_present = true;
 			hwcap = (u_long)(aux->a_un.a_val);
 			break;
 
 		case AT_HWCAP2:
-			hwcap2_present = 1;
+			hwcap2_present = true;
 			hwcap2 = (u_long)(aux->a_un.a_val);
+			break;
+
+		case AT_NCPUS:
+			ncpus = aux->a_un.a_val;
 			break;
 
 		case AT_PAGESIZES:
@@ -127,10 +132,6 @@ init_aux(void)
 
 		case AT_OSRELDATE:
 			osreldate = aux->a_un.a_val;
-			break;
-
-		case AT_NCPUS:
-			ncpus = aux->a_un.a_val;
 			break;
 
 		case AT_TIMEKEEP:
@@ -296,6 +297,26 @@ _elf_aux_info(int aux, void *buf, int buflen)
 		} else
 			res = ENOENT;
 		break;
+	case AT_NCPUS:
+		if (buflen == sizeof(int)) {
+			if (ncpus != 0) {
+				*(int *)buf = ncpus;
+				res = 0;
+			} else
+				res = ENOENT;
+		} else
+			res = EINVAL;
+		break;
+	case AT_NCPUS:
+		if (buflen == sizeof(int)) {
+			if (ncpus != 0) {
+				*(int *)buf = ncpus;
+				res = 0;
+			} else
+				res = ENOENT;
+		} else
+			res = EINVAL;
+		break;
 	case AT_PAGESIZES:
 		if (pagesizes != NULL && pagesizes_len >= buflen) {
 			memcpy(buf, pagesizes, buflen);
@@ -317,16 +338,6 @@ _elf_aux_info(int aux, void *buf, int buflen)
 		if (buflen == sizeof(int)) {
 			if (osreldate != 0) {
 				*(int *)buf = osreldate;
-				res = 0;
-			} else
-				res = ENOENT;
-		} else
-			res = EINVAL;
-		break;
-	case AT_NCPUS:
-		if (buflen == sizeof(int)) {
-			if (ncpus != 0) {
-				*(int *)buf = ncpus;
 				res = 0;
 			} else
 				res = ENOENT;
