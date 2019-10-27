@@ -1,6 +1,7 @@
 /*-
  * Copyright (c) 2015-2018 Ruslan Bukin <br@bsdpad.com>
  * All rights reserved.
+ * Copyright (c) 2019 Mitchell Horne <mhorne@FreeBSD.org>
  *
  * Portions of this software were developed by SRI International and the
  * University of Cambridge Computer Laboratory under DARPA/AFRL contract
@@ -51,28 +52,44 @@
 
 #ifdef _KERNEL
 
-/*
- * 0x0000         CPU ID unimplemented
- * 0x0001         UC Berkeley Rocket repo
- * 0x0002­0x7FFE  Reserved for open-source repos
- * 0x7FFF         Reserved for extension
- * 0x8000         Reserved for anonymous source
- * 0x8001­0xFFFE  Reserved for proprietary implementations
- * 0xFFFF         Reserved for extension
- */
+/* The mvendorid CSR contains the JEDEC encoded vendor ID */
+#define	MVENDORID_BANK_SHIFT	7
+#define	MVENDORID_BANK(bank)	((bank) << MVENDORID_BANK_SHIFT)
+#define	MVENDORID_OFFSET_MASK	0x7F
+#define	MVENDORID_OFFSET(off)	((off) & MVENDORID_OFFSET_MASK)
+#define	MVENDORID(bank, off)	(MVENDORID_BANK(bank) | MVENDORID_OFFSET(off))
 
-#define	CPU_IMPL_SHIFT		0
-#define	CPU_IMPL_MASK		(0xffff << CPU_IMPL_SHIFT)
-#define	CPU_IMPL(mimpid)	((mimpid & CPU_IMPL_MASK) >> CPU_IMPL_SHIFT)
-#define	CPU_IMPL_UNIMPLEMEN	0x0
-#define	CPU_IMPL_UCB_ROCKET	0x1
+#define	MVENDORID_UNKNOWN	MVENDORID(0, 0)
+#define	MVENDORID_ANDES		MVENDORID(7, 30)
+#define	MVENDORID_SIFIVE	MVENDORID(10, 9)
 
-#define	CPU_PART_SHIFT		62
-#define	CPU_PART_MASK		(0x3ul << CPU_PART_SHIFT)
-#define	CPU_PART(misa)		((misa & CPU_PART_MASK) >> CPU_PART_SHIFT)
-#define	CPU_PART_RV32		0x1
-#define	CPU_PART_RV64		0x2
-#define	CPU_PART_RV128		0x3
+/* The marchid CSR contains */
+#define	MARCHID_TYPE_SHIFT	(XLEN - 1)
+#define	MARCHID_TYPE_OPEN	(0UL << MARCHID_TYPE_SHIFT)
+#define	MARCHID_TYPE_CLOSED	(1UL << MARCHID_TYPE_SHIFT)
+#define	MARCHID_ID_MASK		(~(1UL << MARCHID_TYPE_SHIFT))
+#define	MARCHID_ID(id)		(id & MARCHID_ID_MASK)
+#define	MARCHID(type, id)	(type | MARCHID_ID(id))
+
+/* Open-Source RISC-V Architecture IDs */
+#define	MARCHID_UNKNOWN		MARCHID(MARCHID_TYPE_OPEN, 0)
+#define	MARCHID_ROCKET		MARCHID(MARCHID_TYPE_OPEN, 1)
+#define	MARCHID_BOOM		MARCHID(MARCHID_TYPE_OPEN, 2)
+#define	MARCHID_ARIANE		MARCHID(MARCHID_TYPE_OPEN, 3)
+#define	MARCHID_RI5CY		MARCHID(MARCHID_TYPE_OPEN, 4)
+#define	MARCHID_SPIKE		MARCHID(MARCHID_TYPE_OPEN, 5)
+#define	MARCHID_ECLASS		MARCHID(MARCHID_TYPE_OPEN, 6)
+#define	MARCHID_ORCA		MARCHID(MARCHID_TYPE_OPEN, 7)
+#define	MARCHID_SCR1		MARCHID(MARCHID_TYPE_OPEN, 8)
+#define	MARCHID_YARVI		MARCHID(MARCHID_TYPE_OPEN, 9)
+#define	MARCHID_RVBS		MARCHID(MARCHID_TYPE_OPEN, 10)
+#define	MARCHID_SWERV_EH1	MARCHID(MARCHID_TYPE_OPEN, 11)
+#define	MARCHID_MSCC		MARCHID(MARCHID_TYPE_OPEN, 12)
+#define	MARCHID_BLACKPARROT	MARCHID(MARCHID_TYPE_OPEN, 13)
+#define	MARCHID_BSG_MANYCORE	MARCHID(MARCHID_TYPE_OPEN, 14)
+#define	MARCHID_CCLASS		MARCHID(MARCHID_TYPE_OPEN, 15)
+
+#define	MIMPID_UNKNOWN		0
 
 extern char btext[];
 extern char etext[];

@@ -1,6 +1,7 @@
 /*-
  * Copyright (c) 2015-2016 Ruslan Bukin <br@bsdpad.com>
  * All rights reserved.
+ * Copyright (c) 2019 Mitchell Horne <mhorne@FreeBSD.org>
  *
  * Portions of this software were developed by SRI International and the
  * University of Cambridge Computer Laboratory under DARPA/AFRL contract
@@ -60,49 +61,94 @@ char machine[] = "riscv";
 SYSCTL_STRING(_hw, HW_MACHINE, machine, CTLFLAG_RD, machine, 0,
     "Machine class");
 
-/* Hardware implementation info. These values may be empty. */
-register_t mvendorid;	/* The CPU's JEDEC vendor ID */
-register_t marchid;	/* The architecture ID */
-register_t mimpid;	/* The implementation ID */
+/* Hardware implementation info. */
+register_t mvendorid = MVENDORID_UNKNOWN;	/* The CPU's JEDEC vendor ID */
+register_t marchid = MARCHID_UNKNOWN;		/* The CPU's architecture ID */
+register_t mimpid = MIMPID_UNKNOWN;		/* The CPU's implementation ID */
+
+static void get_isa_info(u_int cpu);
+static void get_vendor_info(u_int cpu);
+static void get_arch_info(u_int cpu);
+static void get_impl_info(u_int cpu);
 
 struct cpu_desc {
 	u_int		cpu_impl;
-	u_int		cpu_part_num;
-	const char	*cpu_impl_name;
-	const char	*cpu_part_name;
+	const char	*cpu_vendor_name;
+	const char	*cpu_isa;
+	const char	*cpu_arch_name;
 };
 
 struct cpu_desc cpu_desc[MAXCPU];
 
-struct cpu_parts {
-	u_int		part_id;
-	const char	*part_name;
-};
-#define	CPU_PART_NONE	{ -1, "Unknown Processor" }
-
-struct cpu_implementers {
-	u_int			impl_id;
-	const char		*impl_name;
-};
-#define	CPU_IMPLEMENTER_NONE	{ 0, "Unknown Implementer" }
-
 /*
- * CPU base
+ * Vendors table.
  */
-static const struct cpu_parts cpu_parts_std[] = {
-	{ CPU_PART_RV32,	"RV32" },
-	{ CPU_PART_RV64,	"RV64" },
-	{ CPU_PART_RV128,	"RV128" },
-	CPU_PART_NONE,
+static const struct {
+	u_int		id;
+	const char	*name;
+} riscv_vendor_table[] = {
+	{ MVENDORID_SIFIVE,	"SiFive" },
+	{ MVENDORID_UNKNOWN,	"Unknown Vendor" }
 };
 
 /*
- * Implementers table.
+ * Micro-architectures table.
  */
-const struct cpu_implementers cpu_implementers[] = {
-	{ CPU_IMPL_UCB_ROCKET,	"UC Berkeley Rocket" },
-	CPU_IMPLEMENTER_NONE,
+static const struct {
+	u_int		id;
+	const char	*name;
+} riscv_arch_table[] = {
+	{ MARCHID_ROCKET,	"UC Berkeley Rocket" },
+	{ MARCHID_UNKNOWN,	"Unknown micro-architecture" },
 };
+
+#define	ISA_PREFIX		("rv" __XSTRING(__riscv_xlen))
+static void
+get_isa_info(u_int cpu)
+{
+	/* Just write the prefix for now. */
+	cpu_desc[cpu].cpu_isa = ISA_PREFIX;
+}
+
+static void
+get_vendor_info(u_int cpu)
+{
+	u_int i;
+
+	/* Search for the vendor string. */
+	for (i = 0; riscv_vendor_table[i].id != MVENDORID_UNKNOWN; i++) {
+		if (mvendorid == riscv_vendor_table[i].id) {
+			cpu_desc[cpu].cpu_vendor_name =
+			    riscv_vendor_table[i].name;
+			return;
+		}
+	}
+
+	cpu_desc[cpu].cpu_vendor_name = "Unknown Vendor";
+}
+
+static void
+get_arch_info(u_int cpu)
+{
+	u_int i;
+
+	for (i = 0; riscv_arch_table[i].id != MARCHID_UNKNOWN; i++) {
+		if (marchid == riscv_arch_table[i].id) {
+			cpu_desc[cpu].cpu_arch_name = riscv_arch_table[i].name;
+			return;
+		}
+	}
+
+	/* If we didn't find a match, just print the value. */
+	cpu_desc[cpu].cpu_arch_name = "Unknown Micro-Architecture";
+}
+
+static void
+get_impl_info(u_int cpu)
+{
+
+	cpu_desc[cpu].cpu_impl = mimpid;
+}
 
 #ifdef FDT
 /*
@@ -111,7 +157,6 @@ const struct cpu_implementers cpu_implementers[] = {
  * characters will be sufficient.
  */
 #define	ISA_NAME_MAXLEN		32
-#define	ISA_PREFIX		("rv" __XSTRING(__riscv_xlen))
 #define	ISA_PREFIX_LEN		(sizeof(ISA_PREFIX) - 1)
 
 static void
@@ -143,7 +188,7 @@ fill_elf_hwcap(void *dummy __unused)
 	/*
 	 * Iterate through the CPUs and examine their ISA string. While we
 	 * could assign elf_hwcap to be whatever the boot CPU supports, to
-	 * handle the (unusual) case of running a system with hetergeneous
+	 * handle the (unusual) case of running a system with heterogeneous
 	 * ISAs, keep only the extension bits that are common to all harts.
 	 */
 	for (node = OF_child(node); node > 0; node = OF_peer(node)) {
@@ -182,45 +227,26 @@ SYSINIT(identcpu, SI_SUB_CPU, SI_ORDER_ANY, fill_elf_hwcap, NULL);
 void
 identify_cpu(void)
 {
-	const struct cpu_parts *cpu_partsp;
-	uint32_t part_id;
-	uint32_t impl_id;
-	uint64_t misa;
+	struct cpu_desc desc;
 	u_int cpu;
-	size_t i;
-
-	cpu_partsp = NULL;
-
-	/* TODO: can we get misa somewhere ? */
-	misa = 0;
 
 	cpu = PCPU_GET(cpuid);
+	
+	/* Fill the cpu descriptor. */
+	get_isa_info(cpu);
+	get_vendor_info(cpu);
+	get_arch_info(cpu);
+	get_impl_info(cpu);
 
-	impl_id	= CPU_IMPL(mimpid);
-	for (i = 0; i < nitems(cpu_implementers); i++) {
-		if (impl_id == cpu_implementers[i].impl_id ||
-		    cpu_implementers[i].impl_id == 0) {
-			cpu_desc[cpu].cpu_impl = impl_id;
-			cpu_desc[cpu].cpu_impl_name = cpu_implementers[i].impl_name;
-			cpu_partsp = cpu_parts_std;
-			break;
-		}
-	}
-
-	part_id = CPU_PART(misa);
-	for (i = 0; &cpu_partsp[i] != NULL; i++) {
-		if (part_id == cpu_partsp[i].part_id ||
-		    cpu_partsp[i].part_id == -1) {
-			cpu_desc[cpu].cpu_part_num = part_id;
-			cpu_desc[cpu].cpu_part_name = cpu_partsp[i].part_name;
-			break;
-		}
-	}
-
-	/* Print details for boot CPU or if we want verbose output */
+	/* Print details for boot CPU or if we want verbose output. */
 	if (cpu == 0 || bootverbose) {
-		printf("CPU(%d): %s %s\n", cpu,
-		    cpu_desc[cpu].cpu_impl_name,
-		    cpu_desc[cpu].cpu_part_name);
+		desc = cpu_desc[cpu];
+		printf("CPU(%d): %s\n"
+		    "Vendor: %s\n"
+		    "Micro-architecture: %s\n"
+		    "Implementation: %lu\n",
+		    cpu, desc.cpu_isa, desc.cpu_vendor_name,
+		    desc.cpu_arch_name, desc.cpu_impl);
+		printf("\n");
 	}
 }
