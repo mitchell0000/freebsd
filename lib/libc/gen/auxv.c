@@ -68,11 +68,13 @@ __init_elf_aux_vector(void)
 }
 
 static pthread_once_t aux_once = PTHREAD_ONCE_INIT;
-static int pagesize, osreldate, canary_len, ncpus, pagesizes_len, bsdflags;
+static int pagesize, osreldate, canary_len, ncpus, pagesizes_len, bsdflags, execpath_len;
 static bool hwcap_present, hwcap2_present;
 static char *canary, *pagesizes, *execpath;
 static void *ps_strings, *timekeep;
 static u_long hwcap, hwcap2;
+static u_long base, e_hdr, entry;
+static u_long phdr, phent, phnum;
 static void *fxrng_seed_version;
 
 #ifdef __powerpc__
@@ -88,6 +90,10 @@ init_aux(void)
 
 	for (aux = __elf_aux_vector; aux->a_type != AT_NULL; aux++) {
 		switch (aux->a_type) {
+		case AT_BASE:
+			entry = (u_long)(aux->a_un.a_ptr);
+			break;
+
 		case AT_BSDFLAGS:
 			bsdflags = aux->a_un.a_val;
 			break;
@@ -100,8 +106,17 @@ init_aux(void)
 			canary_len = aux->a_un.a_val;
 			break;
 
+		case AT_EHDRFLAGS:
+			e_hdr = (u_long)(aux->a_un.a_val);
+			break;
+
+		case AT_ENTRY:
+			entry = (u_long)(aux->a_un.a_ptr);
+			break;
+
 		case AT_EXECPATH:
 			execpath = (char *)(aux->a_un.a_ptr);
+			execpath_len = strlen(execpath) + 1;
 			break;
 
 		case AT_HWCAP:
@@ -128,6 +143,18 @@ init_aux(void)
 
 		case AT_PAGESZ:
 			pagesize = aux->a_un.a_val;
+			break;
+
+		case AT_PHDR:
+			phdr = (u_long)(aux->a_un.a_val);
+			break;
+
+		case AT_PHENT:
+			phent = (u_long)(aux->a_un.a_val);
+			break;
+
+		case AT_PHNUM:
+			phnum = (u_long)(aux->a_un.a_val);
 			break;
 
 		case AT_OSRELDATE:
@@ -261,12 +288,49 @@ _elf_aux_info(int aux, void *buf, int buflen)
 		return (EINVAL);
 
 	switch (aux) {
+	case AT_BASE:
+		if (buflen >= sizeof(u_long)) {
+			if (base != 0) {
+				*(u_long *)buf = base;
+				res = 0;
+			} else
+				res = ENOENT;
+		} else
+			res = EINVAL;
+		break;
 	case AT_CANARY:
 		if (canary_len >= buflen) {
 			if (canary != NULL) {
 				memcpy(buf, canary, buflen);
 				memset(canary, 0, canary_len);
 				canary = NULL;
+				res = 0;
+			} else
+				res = ENOENT;
+		} else
+			res = EINVAL;
+		break;
+	case AT_CANARYLEN:
+		if (buflen >= sizeof(int)) {
+			if (canary_len != 0) {
+				*(int *)buf = canary_len;
+				res = 0;
+			} else
+				res = ENOENT;
+		} else
+			res = EINVAL;
+		break;
+	case AT_EHDRFLAGS:
+		if (buflen >= sizeof(u_long)) {
+			*(u_long *)buf = e_hdr;
+			res = 0;
+		} else
+			res = EINVAL;
+		break;
+	case AT_ENTRY:
+		if (buflen >= sizeof(u_long)) {
+			if (entry != 0) {
+				*(u_long *)buf = entry;
 				res = 0;
 			} else
 				res = ENOENT;
@@ -316,16 +380,6 @@ _elf_aux_info(int aux, void *buf, int buflen)
 		} else
 			res = EINVAL;
 		break;
-	case AT_NCPUS:
-		if (buflen == sizeof(int)) {
-			if (ncpus != 0) {
-				*(int *)buf = ncpus;
-				res = 0;
-			} else
-				res = ENOENT;
-		} else
-			res = EINVAL;
-		break;
 	case AT_PAGESIZES:
 		if (pagesizes_len >= buflen) {
 			if (pagesizes != NULL) {
@@ -336,10 +390,50 @@ _elf_aux_info(int aux, void *buf, int buflen)
 		} else
 			res = EINVAL;
 		break;
+	case AT_PAGESIZESLEN:
+		if (buflen >= sizeof(int)) {
+			if (pagesizes_len != 0) {
+				*(int *)buf = pagesizes_len;
+				res = 0;
+			} else
+				res = ENOENT;
+		} else
+			res = EINVAL;
+		break;
 	case AT_PAGESZ:
 		if (buflen == sizeof(int)) {
 			if (pagesize != 0) {
 				*(int *)buf = pagesize;
+				res = 0;
+			} else
+				res = ENOENT;
+		} else
+			res = EINVAL;
+		break;
+	case AT_PHDR:
+		if (buflen == sizeof(u_long)) {
+			if (phdr != 0) {
+				*(u_long *)buf = phdr;
+				res = 0;
+			} else
+				res = ENOENT;
+		} else
+			res = EINVAL;
+		break;
+	case AT_PHENT:
+		if (buflen == sizeof(u_long)) {
+			if (phent != 0) {
+				*(u_long *)buf = phent;
+				res = 0;
+			} else
+				res = ENOENT;
+		} else
+			res = EINVAL;
+		break;
+	case AT_PHNUM:
+		if (buflen == sizeof(u_long)) {
+			if (phnum != 0) {
+				*(u_long *)buf = phnum;
 				res = 0;
 			} else
 				res = ENOENT;

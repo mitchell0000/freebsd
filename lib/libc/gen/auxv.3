@@ -46,9 +46,17 @@ The following values, defined in
 .In sys/elf_common.h
 can be requested (corresponding buffer sizes are specified in parenthesis):
 .Bl -tag -width AT_OSRELDATE
+.It AT_BASE
+The base address.
 .It AT_CANARY
 The canary value for SSP (arbitrary sized buffer, as many bytes are
 returned as it fits into it, rest is zeroed).
+.It AT_CANARYLEN
+Length of the AT_CANARY value in bytes.
+.It AT_ENTRY
+The ELF interpreter's entry point.
+.It AT_EHDRFLAGS
+Value of the ELF header's e_flags field.
 .It AT_EXECPATH
 The path of executed program
 .Dv (MAXPATHLEN).
@@ -58,9 +66,13 @@ and the namecache no longer contains the file's name.
 .It AT_HWCAP
 CPU / hardware feature flags
 .Dv (sizeof(u_long)).
+The values are architecture-dependent and found in
+.In machine/elf.h .
 .It AT_HWCAP2
 CPU / hardware feature flags
 .Dv (sizeof(u_long)).
+The values are architecture-dependent and found in
+.In machine/elf.h .
 .It AT_NCPUS
 Number of CPUs
 .Dv (sizeof(int)).
@@ -70,12 +82,20 @@ The
 of the kernel or jail the program is running on
 .Dv (sizeof(int)).
 .It AT_PAGESIZES
+<<<<<<< HEAD
 Vector of page sizes (arbitrary sized buffer, as many elements of the
 .Dv pagesizes
 array are returned as it fits).
 .It AT_PAGESZ
 Page size in bytes
 .Dv (sizeof(int)).
+.It AT_PHDR
+Program header of program already loaded.
+.It AT_PHENT
+Size of each program header entry.
+.It AT_PHNUM
+Number of program header entries.
+.In vm/vm.h .
 .It AT_TIMEKEEP
 Pointer to VDSO timehands (for library internal use,
 .Dv sizeof(void *)).
@@ -97,7 +117,5 @@ The
 function appeared in
 .Fx 12.0 .
 .Sh BUGS
-Only a small subset of available auxiliary info vector items are
-accessible with this function.
 Some items require a "right-sized" buffer while others just require a
 "big enough" buffer.
