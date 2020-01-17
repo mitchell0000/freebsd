@@ -242,6 +242,11 @@ static struct mtx_padalign allpmaps_lock;
 static SYSCTL_NODE(_vm, OID_AUTO, pmap, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
     "VM/pmap parameters");
 
+static int global_pages_enabled = 1;
+SYSCTL_INT(_vm_pmap, OID_AUTO, global_pages_enabled,
+    CTLFLAG_RDTUN, &global_pages_enabled, 0,
+    "Enable global page bit for kernel mappings");
+
 static int superpages_enabled = 1;
 SYSCTL_INT(_vm_pmap, OID_AUTO, superpages_enabled,
     CTLFLAG_RDTUN, &superpages_enabled, 0,
@@ -529,7 +534,7 @@ pmap_bootstrap_dmap(vm_offset_t kern_l1, vm_paddr_t min_pa, vm_paddr_t max_pa)
 
 		/* superpages */
 		pn = (pa / PAGE_SIZE);
-		entry = PTE_KERN;
+		entry = PTE_KERN | PTE_G;
 		entry |= (pn << PTE_PPN0_S);
 		pmap_store(&l1[l1_slot], entry);
 		printf("l1[%d] = %#lx\n", l1_slot, entry);
@@ -636,7 +641,7 @@ pmap_create_pagetables(vm_paddr_t kernstart, vm_size_t kernlen,
 	printf("nkernl2: %d, slot: %d\n", nkernl2, slot);
 	for (i = 0; i < nkernl2; i++, slot++)
 		pmap_store(&l1[slot],
-		    L1_PDE((vm_paddr_t)kern_l2 + ptoa(i), PTE_V));
+		    L1_PDE((vm_paddr_t)kern_l2 + ptoa(i), PTE_V | PTE_G));
 
 	/* Connect the l3 bootstrap to the kernel L2 table. */
 	slot = pmap_l2_index(freemempos - kernstart + KERNBASE);
@@ -656,7 +661,7 @@ pmap_create_pagetables(vm_paddr_t kernstart, vm_size_t kernlen,
 
 	/* Connect the devmap L2 pages to the L1 table. */
 	slot = pmap_l1_index(VM_DEVMAP_ADDRESS);
-	pmap_store(&l1[slot], L1_PDE((vm_paddr_t)devmap_l2, PTE_V));
+	pmap_store(&l1[slot], L1_PDE((vm_paddr_t)devmap_l2, PTE_V | PTE_G));
 
 	/* Bootstrap the direct map. */
 	pmap_bootstrap_dmap((vm_offset_t)l1, min_pa, max_pa);
@@ -832,9 +837,15 @@ pmap_invalidate_page(pmap_t pmap, vm_offset_t va)
 	mask = pmap->pm_active;
 	CPU_CLR(PCPU_GET(hart), &mask);
 	fence();
-	if (!CPU_EMPTY(&mask) && smp_started)
-		sbi_remote_sfence_vma(mask.__bits, va, 1);
-	sfence_vma_page(va);
+	if (pmap == kernel_pmap) {
+		if (!CPU_EMPTY(&mask) && smp_started)
+			sbi_remote_sfence_vma(mask.__bits, va, 1);
+		sfence_vma_page(va);
+	} else {
+		if (!CPU_EMPTY(&mask) && smp_started)
+			sbi_remote_sfence_vma_asid(mask.__bits, va, 1, 0);
+		sfence_vma_page_asid(va, 0);
+	}
 	sched_unpin();
 }
 
@@ -847,14 +858,24 @@ pmap_invalidate_range(pmap_t pmap, vm_offset_t sva, vm_offset_t eva)
 	mask = pmap->pm_active;
 	CPU_CLR(PCPU_GET(hart), &mask);
 	fence();
-	if (!CPU_EMPTY(&mask) && smp_started)
-		sbi_remote_sfence_vma(mask.__bits, sva, eva - sva + 1);
-
-	/*
-	 * Might consider a loop of sfence_vma_page() for a small
-	 * number of pages in the future.
-	 */
-	sfence_vma();
+	if (pmap == kernel_pmap) {
+		if (!CPU_EMPTY(&mask) && smp_started)
+			sbi_remote_sfence_vma(mask.__bits, sva, eva - sva + 1);
+		/*
+		 * Might consider a loop of sfence_vma_page() for a small
+		 * number of pages in the future.
+		 */
+		sfence_vma();
+	} else {
+		if (!CPU_EMPTY(&mask) && smp_started)
+			sbi_remote_sfence_vma_asid(mask.__bits, sva,
+			    eva - sva + 1, 0);
+		/*
+		 * Might consider a loop of sfence_vma_page_asid() for a small
+		 * number of pages in the future.
+		 */
+		sfence_vma_asid(0);
+	}
 	sched_unpin();
 }
 
@@ -867,15 +888,17 @@ pmap_invalidate_all(pmap_t pmap)
 	mask = pmap->pm_active;
 	CPU_CLR(PCPU_GET(hart), &mask);
 
-	/*
-	 * XXX: The SBI doc doesn't detail how to specify x0 as the
-	 * address to perform a global fence.  BBL currently treats
-	 * all sfence_vma requests as global however.
-	 */
 	fence();
-	if (!CPU_EMPTY(&mask) && smp_started)
-		sbi_remote_sfence_vma(mask.__bits, 0, 0);
-	sfence_vma();
+	/* Ensure we flush global mappings */
+	if (pmap == kernel_pmap) {
+		if (!CPU_EMPTY(&mask) && smp_started)
+			sbi_remote_sfence_vma(mask.__bits, 0, 0);
+		sfence_vma();
+	} else {
+		if (!CPU_EMPTY(&mask) && smp_started)
+			sbi_remote_sfence_vma_asid(mask.__bits, 0, 0, 0);
+		sfence_vma_asid(0);
+	}
 	sched_unpin();
 }
 #else
@@ -887,7 +910,10 @@ static __inline void
 pmap_invalidate_page(pmap_t pmap, vm_offset_t va)
 {
 
-	sfence_vma_page(va);
+	if (pmap == kernel_pmap)
+		sfence_vma_page(va);
+	else
+		sfence_vma_page_asid(va, 0);
 }
 
 static __inline void
@@ -898,14 +924,20 @@ pmap_invalidate_range(pmap_t pmap, vm_offset_t sva, vm_offset_t eva)
 	 * Might consider a loop of sfence_vma_page() for a small
 	 * number of pages in the future.
 	 */
-	sfence_vma();
+	if (pmap == kernel_pmap)
+		sfence_vma();
+	else
+		sfence_vma_asid(0);
 }
 
 static __inline void
 pmap_invalidate_all(pmap_t pmap)
 {
 
-	sfence_vma();
+	if (pmap == kernel_pmap)
+		sfence_vma();
+	else
+		sfence_vma_asid(0);
 }
 #endif
 
@@ -1577,7 +1609,7 @@ pmap_growkernel(vm_offset_t addr)
 			paddr = VM_PAGE_TO_PHYS(nkpg);
 
 			pn = (paddr / PAGE_SIZE);
-			entry = (PTE_V);
+			entry = (PTE_V | PTE_G);
 			entry |= (pn << PTE_PPN0_S);
 			pmap_store(l1, entry);
 			pmap_distribute_l1(kernel_pmap,
@@ -2479,7 +2511,10 @@ retryl3:
 			}
 			if (!atomic_fcmpset_long(l3, &l3e, l3e & ~mask))
 				goto retryl3;
-			anychanged = true;
+			if ((l3e & PTE_G) == PTE_G)
+				pmap_invalidate_page(pmap, sva);
+			else
+				anychanged = true;
 		}
 	}
 	if (anychanged)
@@ -2527,7 +2562,10 @@ pmap_fault_fixup(pmap_t pmap, vm_offset_t va, vm_prot_t ftype)
 	 */
 	if ((oldpte & bits) != bits)
 		pmap_store_bits(pte, bits);
-	sfence_vma();
+	if (pmap == kernel_pmap)
+		sfence_vma();
+	else
+		sfence_vma_asid(0);
 	rv = 1;
 done:
 	PMAP_UNLOCK(pmap);
@@ -4346,7 +4384,7 @@ pmap_activate_sw(struct thread *td)
 #endif
 	PCPU_SET(curpmap, pmap);
 
-	sfence_vma();
+	sfence_vma_asid(0);
 }
 
 void
