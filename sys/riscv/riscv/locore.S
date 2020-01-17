@@ -123,7 +123,7 @@ pagetables:
 	li	a5, KERNBASE
 	srli	a5, a5, L1_SHIFT	/* >> L1_SHIFT */
 	andi	a5, a5, 0x1ff		/* & 0x1ff */
-	li	t4, PTE_V
+	li	t4, (PTE_V | PTE_G)
 	slli	t5, s2, PTE_PPN0_S	/* (s2 << PTE_PPN0_S) */
 	or	t6, t4, t5
 
@@ -156,7 +156,7 @@ pagetables:
 	li	a5, (VM_MAX_KERNEL_ADDRESS - L2_SIZE)
 	srli	a5, a5, L1_SHIFT	/* >> L1_SHIFT */
 	andi	a5, a5, 0x1ff		/* & 0x1ff */
-	li	t4, PTE_V
+	li	t4, (PTE_V | PTE_G)
 	slli	t5, s2, PTE_PPN0_S	/* (s2 << PTE_PPN0_S) */
 	or	t6, t4, t5
 
