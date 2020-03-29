@@ -219,6 +219,9 @@ __FBSDID("$FreeBSD$");
 LIST_HEAD(pmaplist, pmap);
 static struct pmaplist allpmaps = LIST_HEAD_INITIALIZER();
 
+/* Physical address of the page table root. */
+vm_paddr_t root_pt_phys;
+
 struct pmap kernel_pmap_store;
 
 vm_offset_t virtual_avail;	/* VA of first avail page (after kernel bss) */
@@ -345,6 +348,27 @@ pagezero(void *p)
 #define	L2PTE_TO_PHYS(l2) \
     ((((l2) & ~PTE_HI_MASK) >> PTE_PPN1_S) << L2_SHIFT)
 
+/*
+ * Construct a page table entry of the specified level pointing to physical
+ * address pa, with permission bits prot.
+ *
+ * A leaf PTE of any level must point to an address that matches its alignment,
+ * e.g. L2 superpages must be 2MB aligned in memory.
+ */
+#define	L1_PTE(pa, prot)	((((pa) >> L1_SHIFT) << PTE_PPN2_S) | (prot))
+#define	L2_PTE(pa, prot)	((((pa) >> L2_SHIFT) << PTE_PPN1_S) | (prot))
+#define	L3_PTE(pa, prot)	((((pa) >> L3_SHIFT) << PTE_PPN0_S) | (prot))
+
+/*
+ * Construct a page directory entry (PDE), pointing to next level entry at pa,
+ * with permission bits prot.
+ *
+ * Unlike PTEs, page directory entries can point to any 4K-aligned physical
+ * address.
+ */
+#define	L1_PDE(pa, prot)	L3_PTE(pa, prot)
+#define	L2_PDE(pa, prot)	L3_PTE(pa, prot)
+
 static __inline pd_entry_t *
 pmap_l1(pmap_t pmap, vm_offset_t va)
 {
@@ -445,34 +469,32 @@ pmap_distribute_l1(struct pmap *pmap, vm_pindex_t l1index,
 }
 
 static pt_entry_t *
-pmap_early_page_idx(vm_offset_t l1pt, vm_offset_t va, u_int *l1_slot,
-    u_int *l2_slot)
+pmap_early_page_idx(vm_offset_t va, u_int *l1_slot, u_int *l2_slot)
 {
 	pt_entry_t *l2;
 	pd_entry_t *l1;
 
-	l1 = (pd_entry_t *)l1pt;
-	*l1_slot = (va >> L1_SHIFT) & Ln_ADDR_MASK;
+	l1 = (pd_entry_t *)bootstrap_pt_l1;
+	*l1_slot = pmap_l1_index(va);
 
 	/* Check locore has used a table L1 map */
-	KASSERT((l1[*l1_slot] & PTE_RX) == 0,
-		("Invalid bootstrap L1 table"));
+	KASSERT((l1[*l1_slot] & PTE_RWX) == 0, ("Invalid bootstrap L1 table"));
 
 	/* Find the address of the L2 table */
-	l2 = (pt_entry_t *)init_pt_va;
+	l2 = (pt_entry_t *)bootstrap_pt_l2;
 	*l2_slot = pmap_l2_index(va);
 
 	return (l2);
 }
 
 static vm_paddr_t
-pmap_early_vtophys(vm_offset_t l1pt, vm_offset_t va)
+pmap_early_vtophys(vm_offset_t va)
 {
 	u_int l1_slot, l2_slot;
 	pt_entry_t *l2;
 	vm_paddr_t ret;
 
-	l2 = pmap_early_page_idx(l1pt, va, &l1_slot, &l2_slot);
+	l2 = pmap_early_page_idx(va, &l1_slot, &l2_slot);
 
 	/* Check locore has used L2 superpages */
 	KASSERT((l2[l2_slot] & PTE_RX) != 0,
@@ -500,6 +522,7 @@ pmap_bootstrap_dmap(vm_offset_t kern_l1, vm_paddr_t min_pa, vm_paddr_t max_pa)
 	l1 = (pd_entry_t *)kern_l1;
 	l1_slot = pmap_l1_index(DMAP_MIN_ADDRESS);
 
+	printf("bootstrap dmap\n");
 	for (; va < DMAP_MAX_ADDRESS && pa < max_pa;
 	    pa += L1_SIZE, va += L1_SIZE, l1_slot++) {
 		KASSERT(l1_slot < Ln_ENTRIES, ("Invalid L1 index"));
@@ -509,6 +532,7 @@ pmap_bootstrap_dmap(vm_offset_t kern_l1, vm_paddr_t min_pa, vm_paddr_t max_pa)
 		entry = PTE_KERN;
 		entry |= (pn << PTE_PPN0_S);
 		pmap_store(&l1[l1_slot], entry);
+		printf("l1[%d] = %#lx\n", l1_slot, entry);
 	}
 
 	/* Set the upper limit of the DMAP region */
@@ -518,38 +542,127 @@ pmap_bootstrap_dmap(vm_offset_t kern_l1, vm_paddr_t min_pa, vm_paddr_t max_pa)
 	sfence_vma();
 }
 
-static vm_offset_t
-pmap_bootstrap_l3(vm_offset_t l1pt, vm_offset_t va, vm_offset_t l3_start)
+/*
+ *	Create a new set of pagetables to run the kernel with.
+ *
+ *	An initial, temporary setup is created in locore.S, which serves well
+ *	enough to get us this far. It maps kernstart -> KERNBASE, using 2MB
+ *	superpages, and creates a 1GB identity map, which allows this function
+ *	to dereference physical addresses.
+ *
+ *	The physical pages backing these page tables are allocated in the space
+ *	immediately following the kernel's preload area. Depending on the size
+ *	of this area, some, all, or none of these pages can be implicitly
+ *	mapped by the kernel's 2MB mappings. These pages will only ever be
+ *	accessed through the direct map, however.
+ */
+static vm_paddr_t
+pmap_create_pagetables(vm_paddr_t kernstart, vm_size_t kernlen,
+    vm_paddr_t min_pa, vm_paddr_t max_pa)
 {
-	vm_offset_t l3pt;
-	pt_entry_t entry;
-	pd_entry_t *l2;
-	vm_paddr_t pa;
-	u_int l2_slot;
-	pn_t pn;
+	pt_entry_t *l1, *kern_l2, *kern_l3, *devmap_l3;
+	pt_entry_t *dmap_l2;
+	pd_entry_t *devmap_l2;
+	vm_paddr_t kernend, freemempos, pa;
+	int nkernl3, ndevmapl3;
+	int nkernl2, ndmapl2;
+	int i, slot;
 
-	KASSERT((va & L2_OFFSET) == 0, ("Invalid virtual address"));
+	kernend = kernstart + kernlen;
 
-	l2 = pmap_l2(kernel_pmap, va);
-	l2 = (pd_entry_t *)((uintptr_t)l2 & ~(PAGE_SIZE - 1));
-	l2_slot = pmap_l2_index(va);
-	l3pt = l3_start;
+	/* Static allocations begin after the kernel staging area. */
+	freemempos = roundup2(kernend, PAGE_SIZE);
 
-	for (; va < VM_MAX_KERNEL_ADDRESS; l2_slot++, va += L2_SIZE) {
-		KASSERT(l2_slot < Ln_ENTRIES, ("Invalid L2 index"));
+#define	alloc_tables(pt, phys, npg)		\
+	    pt = (pt_entry_t *)phys;		\
+	    phys += npg * PAGE_SIZE;		\
+	    bzero(pt, npg * PAGE_SIZE);
 
-		pa = pmap_early_vtophys(l1pt, l3pt);
-		pn = (pa / PAGE_SIZE);
-		entry = (PTE_V);
-		entry |= (pn << PTE_PPN0_S);
-		pmap_store(&l2[l2_slot], entry);
-		l3pt += PAGE_SIZE;
+	/*
+	 * Allocate our L1 root page table.
+	 */
+	alloc_tables(l1, freemempos, 1);
+	root_pt_phys = (vm_paddr_t)l1;
+	printf("root_pt_phys: %#lx\n", root_pt_phys);
+
+	/*
+	 * Allocate a set of L2 page tables for KVA.
+	 */
+	nkernl2 = howmany(kernlen / Ln_ENTRIES, L2_SIZE);
+	printf("number of KVA L2 page tables: %d\n", nkernl2);
+	alloc_tables(kern_l2, freemempos, nkernl2);
+	printf("kern_l2: %p\n", kern_l2);
+
+	/*
+	 * Allocate a set of L2 page tables for the direct map.
+	 */
+	ndmapl2 = howmany((max_pa - min_pa) / Ln_ENTRIES, L2_SIZE);
+	printf("number of DMAP L2 page tables: %d\n", ndmapl2);
+	alloc_tables(dmap_l2, freemempos, ndmapl2);
+	printf("dmap_l2: %p\n", dmap_l2);
+
+	/*
+	 * Allocate L2 page tables for the static devmap. We can expect that the
+	 * devmap will always be less than 1GB in size, therefore we require
+	 * only a single L2 table.
+	 */
+	alloc_tables(devmap_l2, freemempos, 1);
+
+	/* Allocate L3 page tables for the devmap. */
+	ndevmapl3 = howmany(EARLY_DEVMAP_SIZE / Ln_ENTRIES, L3_SIZE);
+	alloc_tables(devmap_l3, freemempos, ndevmapl3);
+
+	/*
+	 * A somewhat arbitrary choice of 8MB. This should be more than enough
+	 * for any early allocations.
+	 */
+	nkernl3 = 4;
+	alloc_tables(kern_l3, freemempos, nkernl3);
+#undef	alloc_tables
+
+	/* Allocations are done. */
+	if (freemempos < roundup2(kernend, L2_SIZE))
+		freemempos = roundup2(kernend, L2_SIZE);
+
+	/* Map what we have so far using L2 superpages. */
+	slot = pmap_l2_index(KERNBASE);
+	for (pa = kernstart; pa < freemempos; pa += L2_SIZE, slot++)
+		pmap_store(&kern_l2[slot],
+		    L2_PTE(pa, PTE_RWX | PTE_A | PTE_D | PTE_V));
+
+	/* Connect the L2 entries to the L1 table. */
+	printf("kern_l2: %#lx\n", (vm_paddr_t)kern_l2);
+	slot = pmap_l1_index(KERNBASE);
+	printf("nkernl2: %d, slot: %d\n", nkernl2, slot);
+	for (i = 0; i < nkernl2; i++, slot++)
+		pmap_store(&l1[slot],
+		    L1_PDE((vm_paddr_t)kern_l2 + ptoa(i), PTE_V));
+
+	/* Connect the l3 bootstrap to the kernel L2 table. */
+	slot = pmap_l2_index(freemempos - kernstart + KERNBASE);
+	for (i = 0; i < nkernl3; i++, slot++)
+		pmap_store(&kern_l2[slot],
+		    L2_PDE((vm_paddr_t)kern_l3 + ptoa(i), PTE_V));
+
+	/*
+	 * Connect the devmap L3 pages to the L2 table. The devmap PTEs
+	 * themselves are left uninitialized.
+	 */
+	slot = pmap_l2_index(VM_DEVMAP_ADDRESS);
+	for (i = 0; i < ndevmapl3; i++, slot++) {
+		pa = (vm_paddr_t)devmap_l3 + ptoa(i);
+		pmap_store(&devmap_l2[slot], L2_PDE(pa, PTE_V));
 	}
 
-	/* Clean the L2 page table */
-	memset((void *)l3_start, 0, l3pt - l3_start);
+	/* Connect the devmap L2 pages to the L1 table. */
+	slot = pmap_l1_index(VM_DEVMAP_ADDRESS);
+	pmap_store(&l1[slot], L1_PDE((vm_paddr_t)devmap_l2, PTE_V));
 
-	return (l3pt);
+	/* Bootstrap the direct map. */
+	pmap_bootstrap_dmap((vm_offset_t)l1, min_pa, max_pa);
+
+	/* Return the virtual address of freemempos. */
+	return (freemempos - kernstart + KERNBASE);
 }
 
 /*
@@ -558,16 +671,16 @@ pmap_bootstrap_l3(vm_offset_t l1pt, vm_offset_t va, vm_offset_t l3_start)
 void
 pmap_bootstrap(vm_offset_t l1pt, vm_paddr_t kernstart, vm_size_t kernlen)
 {
-	u_int l1_slot, l2_slot;
 	vm_offset_t freemempos;
 	vm_offset_t dpcpu, msgbufpv;
 	vm_paddr_t max_pa, min_pa, pa;
+	pt_entry_t *pte;
 	int i;
 
 	printf("pmap_bootstrap %lx %lx %lx\n", l1pt, kernstart, kernlen);
 
 	/* Set this early so we can use the pagetable walking functions */
-	kernel_pmap_store.pm_l1 = (pd_entry_t *)l1pt;
+	kernel_pmap_store.pm_l1 = (pd_entry_t *)bootstrap_pt_l1;
 	PMAP_LOCK_INIT(kernel_pmap);
 
 	rw_init(&pvh_global_lock, "pmap pv global");
@@ -601,46 +714,51 @@ pmap_bootstrap(vm_offset_t l1pt, vm_paddr_t kernstart, vm_size_t kernlen)
 	printf("min_pa %lx\n", min_pa);
 	printf("max_pa %lx\n", max_pa);
 
-	/* Create a direct map region early so we can use it for pa -> va */
-	pmap_bootstrap_dmap(l1pt, min_pa, max_pa);
+	/* Create a new set of pagetables to run the kernel in. */
+	freemempos = pmap_create_pagetables(kernstart, kernlen, min_pa, max_pa);
+	printf("freemempos after creating pagetables: %lx\n", freemempos);
 
-	/*
-	 * Read the page table to find out what is already mapped.
-	 * This assumes we have mapped a block of memory from KERNBASE
-	 * using a single L1 entry.
-	 */
-	(void)pmap_early_page_idx(l1pt, KERNBASE, &l1_slot, &l2_slot);
-
-	/* Sanity check the index, KERNBASE should be the first VA */
-	KASSERT(l2_slot == 0, ("The L2 index is non-zero"));
-
-	freemempos = roundup2(KERNBASE + kernlen, PAGE_SIZE);
-
-	/* Create the l3 tables for the early devmap */
-	freemempos = pmap_bootstrap_l3(l1pt,
-	    VM_MAX_KERNEL_ADDRESS - L2_SIZE, freemempos);
-
+	/* Switch to the newly created page tables. */
+	kernel_pmap_store.pm_l1 = (pd_entry_t *)PHYS_TO_DMAP(root_pt_phys);
+	load_satp(atop(root_pt_phys) | SATP_MODE_SV39);
 	sfence_vma();
 
-#define alloc_pages(var, np)						\
-	(var) = freemempos;						\
-	freemempos += (np * PAGE_SIZE);					\
-	memset((char *)(var), 0, ((np) * PAGE_SIZE));
+#define reserve_va(var, size)						\
+	var = freemempos;						\
+	freemempos += size
 
-	/* Allocate dynamic per-cpu area. */
-	alloc_pages(dpcpu, DPCPU_SIZE / PAGE_SIZE);
+	/* Allocate the dynamic per-cpu area. */
+	reserve_va(dpcpu, DPCPU_SIZE);
+
+	/* Map it. */
+	pa = pmap_early_vtophys(dpcpu);
+	pte = pmap_l3(kernel_pmap, dpcpu);
+	KASSERT(pte != NULL, ("Bootstrap pages missing"));
+	for (int i = 0; i < DPCPU_SIZE / PAGE_SIZE; i++)
+		pmap_store(&pte[i], L3_PTE(pa + ptoa(i), PTE_KERN));
+
+	/* Now, it can be initialized. */
 	dpcpu_init((void *)dpcpu, 0);
 
 	/* Allocate memory for the msgbuf, e.g. for /sbin/dmesg */
-	alloc_pages(msgbufpv, round_page(msgbufsize) / PAGE_SIZE);
+	reserve_va(msgbufpv, round_page(msgbufsize));
 	msgbufp = (void *)msgbufpv;
 
-	virtual_avail = roundup2(freemempos, L2_SIZE);
+	/* Map it. */
+	pa = pmap_early_vtophys(msgbufpv);
+	pte = pmap_l3(kernel_pmap, msgbufpv);
+	KASSERT(pte != NULL, ("Bootstrap pages missing"));
+	for (int i = 0; i < round_page(msgbufsize) / PAGE_SIZE; i++)
+		pmap_store(&pte[i], L3_PTE(pa + ptoa(i), PTE_KERN));
+#undef	reserve_va
+
+	/* Mark the bounds of our available virtual address space */
+	virtual_avail = freemempos;
 	virtual_end = VM_MAX_KERNEL_ADDRESS - L2_SIZE;
 	kernel_vm_end = virtual_avail;
 
-	pa = pmap_early_vtophys(l1pt, freemempos);
-
+	/* Exclude the reserved physical memory from allocations. */
+	pa = pmap_early_vtophys(freemempos);
 	physmem_exclude_region(kernstart, pa - kernstart, EXFLAG_NOALLOC);
 }
 

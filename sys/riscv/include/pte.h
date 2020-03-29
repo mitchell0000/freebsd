@@ -92,6 +92,9 @@ typedef	uint64_t	pn_t;			/* page number */
 #define	PTE_PPN3_S	37
 #define	PTE_SIZE	8
 
-#endif /* !_MACHINE_PTE_H_ */
+#ifndef LOCORE
+extern pd_entry_t bootstrap_pt_l1[];
+extern pt_entry_t bootstrap_pt_l2[];
+#endif
 
-/* End of pte.h */
+#endif /* !_MACHINE_PTE_H_ */
