@@ -38,12 +38,18 @@
 #define	INT8_C(c)		(c)
 #define	INT16_C(c)		(c)
 #define	INT32_C(c)		(c)
-#define	INT64_C(c)		(c ## L)
 
 #define	UINT8_C(c)		(c)
 #define	UINT16_C(c)		(c)
 #define	UINT32_C(c)		(c ## U)
+
+#ifdef __LP64__
+#define	INT64_C(c)		(c ## L)
 #define	UINT64_C(c)		(c ## UL)
+#else
+#define	INT64_C(c)		(c ## LL)
+#define	UINT64_C(c)		(c ## ULL)
+#endif
 
 #define	INTMAX_C(c)		INT64_C(c)
 #define	UINTMAX_C(c)		UINT64_C(c)
@@ -122,9 +128,15 @@
  * ISO/IEC 9899:1999
  * 7.18.2.4  Limits of integer types capable of holding object pointers
  */
+#ifdef __LP64__
 #define	INTPTR_MIN	INT64_MIN
 #define	INTPTR_MAX	INT64_MAX
 #define	UINTPTR_MAX	UINT64_MAX
+#else
+#define	INTPTR_MIN	INT32_MIN
+#define	INTPTR_MAX	INT32_MAX
+#define	UINTPTR_MAX	UINT32_MAX
+#endif
 
 /*
  * ISO/IEC 9899:1999
@@ -139,15 +151,24 @@
  * 7.18.3  Limits of other integer types
  */
 /* Limits of ptrdiff_t. */
+#ifdef __LP64__
 #define	PTRDIFF_MIN	INT64_MIN	
 #define	PTRDIFF_MAX	INT64_MAX
+#else
+#define	PTRDIFF_MIN	INT32_MIN
+#define	PTRDIFF_MAX	INT32_MAX
+#endif
 
 /* Limits of sig_atomic_t. */
 #define	SIG_ATOMIC_MIN	INT32_MIN
 #define	SIG_ATOMIC_MAX	INT32_MAX
 
 /* Limit of size_t. */
+#ifdef __LP64__
 #define	SIZE_MAX	UINT64_MAX
+#else
+#define	SIZE_MAX	UINT32_MAX
+#endif
 
 /* Limits of wint_t. */
 #define	WINT_MIN	INT32_MIN
