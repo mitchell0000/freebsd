@@ -1001,6 +1001,12 @@ private:
   }
 #endif
 
+#if defined (_LIBUNWIND_TARGET_RISCV32)
+  int stepWithCompactEncoding(Registers_riscv32 &) {
+    return UNW_EINVAL;
+  }
+#endif
+
   bool compactSaysUseDwarf(uint32_t *offset=NULL) const {
     R dummy;
     return compactSaysUseDwarf(dummy, offset);
@@ -1069,6 +1075,12 @@ private:
 
 #if defined (_LIBUNWIND_TARGET_RISCV)
   bool compactSaysUseDwarf(Registers_riscv &, uint32_t *) const {
+    return true;
+  }
+#endif
+
+#if defined (_LIBUNWIND_TARGET_RISCV32)
+  bool compactSaysUseDwarf(Registers_riscv32 &, uint32_t *) const {
     return true;
   }
 #endif
@@ -1147,6 +1159,12 @@ private:
 
 #if defined (_LIBUNWIND_TARGET_RISCV)
   compact_unwind_encoding_t dwarfEncoding(Registers_riscv &) const {
+    return 0;
+  }
+#endif
+
+#if defined (_LIBUNWIND_TARGET_RISCV32)
+  compact_unwind_encoding_t dwarfEncoding(Registers_riscv32 &) const {
     return 0;
   }
 #endif

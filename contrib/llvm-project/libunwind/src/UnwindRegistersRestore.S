@@ -1152,6 +1152,87 @@ DEFINE_LIBUNWIND_FUNCTION(_ZN9libunwind15Registers_riscv6jumptoEv)
 
   ret                       // jump to ra
 
+#elif defined(__riscv) && __riscv_xlen == 32
+
+//
+// void libunwind::Registers_riscv::jumpto()
+//
+// On entry:
+//  thread_state pointer is in a0
+//
+  .p2align 2
+DEFINE_LIBUNWIND_FUNCTION(_ZN9libunwind15Registers_riscv6jumptoEv)
+#if defined(__riscv_flen) && __riscv_flen == 64
+  fld    f0, (8 * 32 + 8 * 0)(a0)
+  fld    f1, (8 * 32 + 8 * 1)(a0)
+  fld    f2, (8 * 32 + 8 * 2)(a0)
+  fld    f3, (8 * 32 + 8 * 3)(a0)
+  fld    f4, (8 * 32 + 8 * 4)(a0)
+  fld    f5, (8 * 32 + 8 * 5)(a0)
+  fld    f6, (8 * 32 + 8 * 6)(a0)
+  fld    f7, (8 * 32 + 8 * 7)(a0)
+  fld    f8, (8 * 32 + 8 * 8)(a0)
+  fld    f9, (8 * 32 + 8 * 9)(a0)
+  fld    f10, (8 * 32 + 8 * 10)(a0)
+  fld    f11, (8 * 32 + 8 * 11)(a0)
+  fld    f12, (8 * 32 + 8 * 12)(a0)
+  fld    f13, (8 * 32 + 8 * 13)(a0)
+  fld    f14, (8 * 32 + 8 * 14)(a0)
+  fld    f15, (8 * 32 + 8 * 15)(a0)
+  fld    f16, (8 * 32 + 8 * 16)(a0)
+  fld    f17, (8 * 32 + 8 * 17)(a0)
+  fld    f18, (8 * 32 + 8 * 18)(a0)
+  fld    f19, (8 * 32 + 8 * 19)(a0)
+  fld    f20, (8 * 32 + 8 * 20)(a0)
+  fld    f21, (8 * 32 + 8 * 21)(a0)
+  fld    f22, (8 * 32 + 8 * 22)(a0)
+  fld    f23, (8 * 32 + 8 * 23)(a0)
+  fld    f24, (8 * 32 + 8 * 24)(a0)
+  fld    f25, (8 * 32 + 8 * 25)(a0)
+  fld    f26, (8 * 32 + 8 * 26)(a0)
+  fld    f27, (8 * 32 + 8 * 27)(a0)
+  fld    f28, (8 * 32 + 8 * 28)(a0)
+  fld    f29, (8 * 32 + 8 * 29)(a0)
+  fld    f30, (8 * 32 + 8 * 30)(a0)
+  fld    f31, (8 * 32 + 8 * 31)(a0)
+#endif
+
+  // x0 is zero
+  lw    x1, (4 * 1)(a0)
+  lw    x2, (4 * 2)(a0)
+  lw    x3, (4 * 3)(a0)
+  lw    x4, (4 * 4)(a0)
+  lw    x5, (4 * 5)(a0)
+  lw    x6, (4 * 6)(a0)
+  lw    x7, (4 * 7)(a0)
+  lw    x8, (4 * 8)(a0)
+  lw    x9, (4 * 9)(a0)
+  // skip a0 for now
+  lw    x11, (4 * 11)(a0)
+  lw    x12, (4 * 12)(a0)
+  lw    x13, (4 * 13)(a0)
+  lw    x14, (4 * 14)(a0)
+  lw    x15, (4 * 15)(a0)
+  lw    x16, (4 * 16)(a0)
+  lw    x17, (4 * 17)(a0)
+  lw    x18, (4 * 18)(a0)
+  lw    x19, (4 * 19)(a0)
+  lw    x20, (4 * 20)(a0)
+  lw    x21, (4 * 21)(a0)
+  lw    x22, (4 * 22)(a0)
+  lw    x23, (4 * 23)(a0)
+  lw    x24, (4 * 24)(a0)
+  lw    x25, (4 * 25)(a0)
+  lw    x26, (4 * 26)(a0)
+  lw    x27, (4 * 27)(a0)
+  lw    x28, (4 * 28)(a0)
+  lw    x29, (4 * 29)(a0)
+  lw    x30, (4 * 30)(a0)
+  lw    x31, (4 * 31)(a0)
+  lw    x10, (4 * 10)(a0)   // restore a0
+
+  ret                       // jump to ra
+
 #endif
 
 #endif /* !defined(__USING_SJLJ_EXCEPTIONS__) */
