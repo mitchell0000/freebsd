@@ -296,8 +296,9 @@ __DEFAULT_YES_OPTIONS+=LLDB
 .else
 __DEFAULT_NO_OPTIONS+=LLDB
 .endif
-# LIB32 is supported on amd64, mips64, and powerpc64
-.if (${__T} == "amd64" || ${__T:Mmips64*} || ${__T} == "powerpc64")
+# LIB32 is supported on amd64, mips64, powerpc64, and riscv64
+.if (${__T} == "amd64" || ${__T:Mmips64*} || ${__T} == "powerpc64" || \
+    ${__T:Mriscv64*})
 __DEFAULT_YES_OPTIONS+=LIB32
 .else
 BROKEN_OPTIONS+=LIB32
