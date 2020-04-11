@@ -84,6 +84,22 @@ _EMULATION=	elf32btsmip_fbsd
 .endif
 LIB32WMAKEFLAGS= LD="${XLD} -m ${_EMULATION}"
 LIB32LDFLAGS=	-Wl,-m${_EMULATION}
+.elif ${COMPAT_ARCH:Mriscv64*}
+HAS_COMPAT=32
+.if empty(COMPAT_CPUTYPE)
+LIB32CPUFLAGS=	-march=rv32gc
+.else
+LIB32CPUFLAGS=	-march=${COMPAT_CPUTYPE}
+.endif
+LIB32CPUFLAGS+=	-mabi=ilp32d
+.if ${COMPAT_COMPILER_TYPE} == "clang"
+LIB32CPUFLAGS+=	-target riscv32-unknown-freebsd13.0
+.endif
+LIB32_MACHINE=	riscv
+LIB32_MACHINE_ARCH=	riscv32
+_EMULATION=	elf32lriscv
+LIB32WMAKEFLAGS= LD="${XLD} -m ${_EMULATION}"
+LIB32LDFLAGS=	-Wl,-m${_EMULATION}
 .endif
 
 LIB32WMAKEFLAGS+= NM="${XNM}"
