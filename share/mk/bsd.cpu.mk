@@ -355,10 +355,14 @@ CFLAGS.gcc+= -mabi=spe -mfloat-gprs=double -Wa,-me500
 .endif
 
 .if ${MACHINE_CPUARCH} == "riscv"
-.if ${MACHINE_ARCH:Mriscv*sf}
+.if ${MACHINE_ARCH} == "riscv64sf"
 CFLAGS += -march=rv64imac -mabi=lp64
-.else
+.elif ${MACHINE_ARCH} == "riscv64"
 CFLAGS += -march=rv64imafdc -mabi=lp64d
+.elif ${MACHINE_ARCH} == "riscv32sf"
+CFLAGS += -march=rv32imac -mabi=ilp32
+.elif ${MACHINE_ARCH} == "riscv32"
+CFLAGS += -march=rv32imafdc -mabi=ilp32d
 .endif
 .endif
 
