@@ -195,7 +195,7 @@ sfence(void)
 
 #ifdef _KERNEL
 
-#define	HAVE_INLINE_FFS
+#define	HAVE_MD_FFS
 
 static __inline __pure2 int
 ffs(int mask)
@@ -209,7 +209,7 @@ ffs(int mask)
 	 return (mask == 0 ? mask : (int)bsfl((u_int)mask) + 1);
 }
 
-#define	HAVE_INLINE_FFSL
+#define	HAVE_MD_FFSL
 
 static __inline __pure2 int
 ffsl(long mask)
@@ -217,7 +217,7 @@ ffsl(long mask)
 	return (ffs((int)mask));
 }
 
-#define	HAVE_INLINE_FLS
+#define	HAVE_MD_FLS
 
 static __inline __pure2 int
 fls(int mask)
@@ -225,7 +225,7 @@ fls(int mask)
 	return (mask == 0 ? mask : (int)bsrl((u_int)mask) + 1);
 }
 
-#define	HAVE_INLINE_FLSL
+#define	HAVE_MD_FLSL
 
 static __inline __pure2 int
 flsl(long mask)

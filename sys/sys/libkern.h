@@ -132,24 +132,63 @@ void	 arc4rand(void *, u_int, int);
 int	 timingsafe_bcmp(const void *, const void *, size_t);
 void	*bsearch(const void *, const void *, size_t,
 	    size_t, int (*)(const void *, const void *));
-#ifndef	HAVE_INLINE_FFS
-int	 ffs(int);
+
+/*
+ * Find First Set bit (ffs) and Find Last Set bit (fls) family of functions.
+ * These definitions may be overridden by machine/cpufunc.h.
+ */
+#ifndef	HAVE_MD_FFS
+static __inline __pure2 int
+ffs(int mask)
+{
+
+	return (__builtin_ffs((u_int)mask));
+}
 #endif
-#ifndef	HAVE_INLINE_FFSL
-int	 ffsl(long);
+#ifndef	HAVE_MD_FFSL
+static __inline __pure2 int
+ffsl(long mask)
+{
+
+	return (__builtin_ffsl((u_long)mask));
+}
 #endif
-#ifndef	HAVE_INLINE_FFSLL
-int	 ffsll(long long);
+#ifndef	HAVE_MD_FFSLL
+static __inline __pure2 int
+ffsll(long long mask)
+{
+
+	return (__builtin_ffsll((unsigned long long)mask));
+}
 #endif
-#ifndef	HAVE_INLINE_FLS
-int	 fls(int);
+#ifndef	HAVE_MD_FLS
+static __inline __pure2 int
+fls(int mask)
+{
+
+	return (mask == 0 ? 0 :
+	    8 * sizeof(mask) - __builtin_clz((u_int)mask));
+}
 #endif
-#ifndef	HAVE_INLINE_FLSL
-int	 flsl(long);
+#ifndef	HAVE_MD_FLSL
+static __inline __pure2 int
+flsl(long mask)
+{
+
+	return (mask == 0 ? 0 :
+	    8 * sizeof(mask) - __builtin_clzl((u_long)mask));
+}
 #endif
-#ifndef	HAVE_INLINE_FLSLL
-int	 flsll(long long);
+#ifndef	HAVE_MD_FLSLL
+static __inline __pure2 int
+flsll(long long mask)
+{
+
+	return (mask == 0 ? 0 :
+	    8 * sizeof(mask) - __builtin_clzll((unsigned long long)mask));
+}
 #endif
+
 #define	bitcount64(x)	__bitcount64((uint64_t)(x))
 #define	bitcount32(x)	__bitcount32((uint32_t)(x))
 #define	bitcount16(x)	__bitcount16((uint16_t)(x))

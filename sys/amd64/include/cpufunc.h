@@ -159,10 +159,10 @@ enable_intr(void)
 
 #ifdef _KERNEL
 
-#define	HAVE_INLINE_FFS
+#define	HAVE_MD_FFS
 #define        ffs(x)  __builtin_ffs(x)
 
-#define	HAVE_INLINE_FFSL
+#define	HAVE_MD_FFSL
 
 static __inline __pure2 int
 ffsl(long mask)
@@ -171,7 +171,7 @@ ffsl(long mask)
 	return (__builtin_ffsl(mask));
 }
 
-#define	HAVE_INLINE_FFSLL
+#define	HAVE_MD_FFSLL
 
 static __inline __pure2 int
 ffsll(long long mask)
@@ -179,7 +179,7 @@ ffsll(long long mask)
 	return (ffsl((long)mask));
 }
 
-#define	HAVE_INLINE_FLS
+#define	HAVE_MD_FLS
 
 static __inline __pure2 int
 fls(int mask)
@@ -187,7 +187,7 @@ fls(int mask)
 	return (mask == 0 ? mask : (int)bsrl((u_int)mask) + 1);
 }
 
-#define	HAVE_INLINE_FLSL
+#define	HAVE_MD_FLSL
 
 static __inline __pure2 int
 flsl(long mask)
@@ -195,7 +195,7 @@ flsl(long mask)
 	return (mask == 0 ? mask : (int)bsrq((u_long)mask) + 1);
 }
 
-#define	HAVE_INLINE_FLSLL
+#define	HAVE_MD_FLSLL
 
 static __inline __pure2 int
 flsll(long long mask)

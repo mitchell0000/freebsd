@@ -21,12 +21,6 @@ kern/subr_intr.c		standard
 kern/subr_physmem.c		standard
 libkern/bcmp.c			standard
 libkern/bcopy.c			standard
-libkern/ffs.c			standard
-libkern/ffsl.c			standard
-libkern/ffsll.c			standard
-libkern/fls.c			standard
-libkern/flsl.c			standard
-libkern/flsll.c			standard
 libkern/memcmp.c		standard
 libkern/memset.c		standard
 riscv/riscv/autoconf.c		standard
