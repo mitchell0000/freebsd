@@ -114,6 +114,26 @@ pagetables:
 	/* Get the kernel's load address */
 	jal	get_physmem
 
+	/* Construct Identity Map */
+	lla	s1, pagetable_l1
+	mv	s2, s9			/* kernstart */
+	srli	s2, s2, L1_SHIFT
+
+	mv	a5, s9
+	srli	a5, a5, L1_SHIFT
+	andi	a5, a5, Ln_ADDR_MASK
+	li	t4, (PTE_V | PTE_R | PTE_W)
+	slli	s2, s2, PTE_PPN2_S
+	or	t6, t4, s2
+
+	/* Store L1 PTE entry to position */
+	li	a6, PTE_SIZE
+	mulw	a5, a5, a6
+	add	t0, s1, a5
+	sd	t6, (t0)
+
+	/* Construct the virtual address space */
+
 	/* Add L1 entry for kernel */
 	lla	s1, pagetable_l1
 	lla	s2, pagetable_l2	/* Link to next level PN */
@@ -165,31 +185,9 @@ pagetables:
 	add	t0, s1, a5
 	sd	t6, (t0)
 
-	/* Check if we have a DTB that needs to be mapped */
-	beqz	a1, 2f
-
-	/* Create an L2 page superpage for DTB */
-	lla	s1, pagetable_l2_devmap
-	mv	s2, a1
-	srli	s2, s2, PAGE_SHIFT
-	/* Mask off any bits that aren't aligned */
-	andi	s2, s2, ~((1 << (PTE_PPN1_S - PTE_PPN0_S)) - 1)
-
-	li	t0, (PTE_KERN)
-	slli	t2, s2, PTE_PPN0_S	/* << PTE_PPN0_S */
-	or	t0, t0, t2
-
-	/* Store PTE entry to position */
-	li	a6, PTE_SIZE
-	li	a5, 510
-	mulw	a5, a5, a6
-	add	t1, s1, a5
-	sd	t0, (t1)
-
 	/* Page tables END */
 
 	/* Setup supervisor trap vector */
-2:
 	lla	t0, va
 	sub	t0, t0, s9
 	li	t1, KERNBASE
@@ -244,15 +242,7 @@ va:
 
 	la	t0, initstack
 	sd	t0, RISCV_BOOTPARAMS_KERN_STACK(sp)
-
-	li	t0, (VM_EARLY_DTB_ADDRESS)
-	/* Add offset of DTB within superpage */
-	li	t1, (L2_OFFSET)
-	and	t1, a1, t1
-	add	t0, t0, t1
-	sd	t0, RISCV_BOOTPARAMS_DTBP_VIRT(sp)
 	sd	a1, RISCV_BOOTPARAMS_DTBP_PHYS(sp)
-
 	sd	a0, RISCV_BOOTPARAMS_MODULEP(sp)
 
 	mv	a0, sp
