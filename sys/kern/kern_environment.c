@@ -93,28 +93,29 @@ bool	dynamic_kenv;
 			    panic("%s: called before SI_SUB_KMEM", __func__)
 
 int
-sys_kenv(td, uap)
-	struct thread *td;
-	struct kenv_args /* {
-		int what;
-		const char *name;
-		char *value;
-		int len;
-	} */ *uap;
+sys_kenv(struct thread *td, struct kenv_args *uap)
 {
-	char *name, *value, *buffer = NULL;
+	char *name, *value, *envp, *buffer = NULL;
 	size_t len, done, needed, buflen;
-	int error, i;
+	int error;
 
 	KASSERT(dynamic_kenv, ("kenv: dynamic_kenv = false"));
 
 	error = 0;
-	if (uap->what == KENV_DUMP) {
+	if (uap->what == KENV_DUMP || uap->what == KENV_DUMP_LOADER ||
+	    uap->what == KENV_DUMP_STATIC) {
 #ifdef MAC
 		error = mac_kenv_check_dump(td->td_ucred);
 		if (error)
 			return (error);
 #endif
+		/* Select the appropriate env pointer for what we wish to dump. */
+		envp = kenvp[0];
+		if (uap->what == KENV_DUMP_LOADER)
+			envp = md_envp;
+		else if (uap->what == KENV_DUMP_STATIC)
+			envp = kern_envp;
+
 		done = needed = 0;
 		buflen = uap->len;
 		if (buflen > KENV_SIZE * (KENV_MNAMELEN + kenv_mvallen + 2))
@@ -122,9 +123,12 @@ sys_kenv(td, uap)
 			    kenv_mvallen + 2);
 		if (uap->len > 0 && uap->value != NULL)
 			buffer = malloc(buflen, M_TEMP, M_WAITOK|M_ZERO);
-		mtx_lock(&kenv_lock);
-		for (i = 0; kenvp[i] != NULL; i++) {
-			len = strlen(kenvp[i]) + 1;
+
+		/* Only take the lock for the dynamic kenv. */
+		if (uap->what == KENV_DUMP)
+			mtx_lock(&kenv_lock);
+		while (envp != NULL) {
+			len = strlen(envp) + 1;
 			needed += len;
 			len = min(len, buflen - done);
 			/*
@@ -132,11 +136,18 @@ sys_kenv(td, uap)
 			 * buffer, just keep computing the required size.
 			 */
 			if (uap->value != NULL && buffer != NULL && len > 0) {
-				bcopy(kenvp[i], buffer + done, len);
+				bcopy(envp, buffer + done, len);
 				done += len;
 			}
+
+			/* Advance the pointer depending on the kenv format. */
+			if (uap->what == KENV_DUMP)
+				envp++;
+			else
+				envp = kernenv_next(envp);
 		}
-		mtx_unlock(&kenv_lock);
+		if (uap->what == KENV_DUMP)
+			mtx_unlock(&kenv_lock);
 		if (buffer != NULL) {
 			error = copyout(buffer, uap->value, done);
 			free(buffer, M_TEMP);
