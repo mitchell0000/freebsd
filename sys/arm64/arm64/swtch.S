@@ -144,7 +144,7 @@ ENTRY(cpu_switch)
 	ldr	w5, [x4, #PCB_FLAGS]
 	clear_step_flag w5, x6
 
-	mov	x19, x0
+	//mov	x19, x0
 	mov	x20, x1
 	mov	x21, x2
 
@@ -152,8 +152,18 @@ ENTRY(cpu_switch)
 	/* Load the pcb address */
 	mov	x1, x4
 	bl	vfp_save_state
+#endif
+#ifdef SVE
+	/* Check if there is a state to save */
+	ldr	x1, [x4, #PCB_SVESTATE]
+	cbz	x1, 1f
+	mov	x1, x4
+	bl	sve_state_save
+1:
+#endif
+#if defined(VFP) || defined(SVE)
 	mov	x1, x20
-	mov	x0, x19
+	//mov	x0, x19
 #endif
 
 	bl	pmap_switch
@@ -171,10 +181,10 @@ ENTRY(cpu_switch)
 #if defined(SCHED_ULE) && defined(SMP)
 	/* Spin if TD_LOCK points to a blocked_lock */
 	ldr	x2, =_C_LABEL(blocked_lock)
-1:
+2:
 	ldar	x3, [x1, #TD_LOCK]
 	cmp	x3, x2
-	b.eq	1b
+	b.eq	2b
 #endif
 
 	/* If we are single stepping, enable it */
@@ -285,6 +295,11 @@ ENTRY(savectx)
 	mov	x0, xzr			/* td = NULL */
 	bl	vfp_save_state
 	mov	lr, x28
+#endif
+#ifdef SVE
+
+	
+	bl	sve_state_save
 #endif
 
 	ret

@@ -54,6 +54,9 @@ __FBSDID("$FreeBSD$");
 #ifdef VFP
 #include <machine/vfp.h>
 #endif
+#ifdef SVE
+#include <machine/sve.h>
+#endif
 
 #include <dev/psci/psci.h>
 
@@ -83,6 +86,8 @@ cpu_fork(struct thread *td1, struct proc *p2, struct thread *td2, int flags)
 		if ((td1->td_pcb->pcb_fpflags & PCB_FP_STARTED) != 0)
 			vfp_save_state(td1, td1->td_pcb);
 #endif
+#ifdef SVE
+		if ((td1->td_pcb->pcb_flags
 	}
 
 	pcb2 = (struct pcb *)(td2->td_kstack +
@@ -106,6 +111,7 @@ cpu_fork(struct thread *td1, struct proc *p2, struct thread *td2, int flags)
 	td2->td_pcb->pcb_sp = (uintptr_t)td2->td_frame;
 	td2->td_pcb->pcb_fpusaved = &td2->td_pcb->pcb_fpustate;
 	td2->td_pcb->pcb_vfpcpu = UINT_MAX;
+	td2->td_pcb->pcb_svestate
 
 	/* Setup to release spin count in fork_exit(). */
 	td2->td_md.md_spinlock_count = 1;
@@ -177,10 +183,17 @@ cpu_copy_thread(struct thread *td, struct thread *td0)
 	td->td_pcb->pcb_sp = (uintptr_t)td->td_frame;
 	td->td_pcb->pcb_fpusaved = &td->td_pcb->pcb_fpustate;
 	td->td_pcb->pcb_vfpcpu = UINT_MAX;
+#ifdef SVE
+	td->td_pcb->pcb_svecpu = UINT_MAX;
+	td->td_pcb->pcb_svestate = sve_state_duplicate();
+#endif
 
 	/* Setup to release spin count in fork_exit(). */
 	td->td_md.md_spinlock_count = 1;
 	td->td_md.md_saved_daif = td0->td_md.md_saved_daif & ~DAIF_I_MASKED;
+#ifdef SVE
+	td->td_md.md_sve_vlen = td0->td_md.md_sve_vlen;
+#endif
 }
 
 /*
@@ -285,10 +298,16 @@ cpu_exec_vmspace_reuse(struct proc *p __unused, vm_map_t map __unused)
 
 int
 cpu_procctl(struct thread *td __unused, int idtype __unused, id_t id __unused,
-    int com __unused, void *data __unused)
+    int com, void *data __unused)
 {
+	int error;
 
-	return (EINVAL);
+	switch (com) {
+	default:
+		error = EINVAL;
+		break;
+	}
+	return (error);
 }
 
 void

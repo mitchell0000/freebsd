@@ -79,6 +79,11 @@
 #define	CNTP_CTL_ISTATUS	(1 << 2)
 
 /* CPACR_EL1 */
+#define	CPACR_SVE_MASK		(0x3UL << 20)
+#define	 CPACR_SVE_TRAP_ALL1	(0x0UL << 20)
+#define	 CPACR_SVE_TRAP_EL0	(0x1UL << 20)
+#define	 CPACR_SVE_TRAP_ALL2	(0x2UL << 20)
+#define	 CPACR_SVE_TRAP_NONE	(0x3UL << 20)
 #define	CPACR_FPEN_MASK		(0x3 << 20)
 #define	 CPACR_FPEN_TRAP_ALL1	(0x0 << 20) /* Traps from EL0 and EL1 */
 #define	 CPACR_FPEN_TRAP_EL0	(0x1 << 20) /* Traps from EL0 */
@@ -219,6 +224,7 @@
 #define	 EXCP_SVC64		0x15	/* SVC trap for AArch64 */
 #define	 EXCP_HVC		0x16	/* HVC trap */
 #define	 EXCP_MSR		0x18	/* MSR/MRS trap */
+#define	 EXCP_SVE		0x19	/* Trapped SVE exception */
 #define	 EXCP_INSN_ABORT_L	0x20	/* Instruction abort, from lower EL */
 #define	 EXCP_INSN_ABORT	0x21	/* Instruction abort, from same EL */ 
 #define	 EXCP_PC_ALIGN		0x22	/* PC alignment fault */

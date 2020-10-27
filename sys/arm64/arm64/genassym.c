@@ -64,6 +64,7 @@ ASSYM(PCB_SP, offsetof(struct pcb, pcb_sp));
 ASSYM(PCB_TPIDRRO, offsetof(struct pcb, pcb_tpidrro_el0));
 ASSYM(PCB_ONFAULT, offsetof(struct pcb, pcb_onfault));
 ASSYM(PCB_FLAGS, offsetof(struct pcb, pcb_flags));
+ASSYM(PCB_SVESTATE, offsetof(struct pcb, pcb_svestate));
 
 ASSYM(SF_UC, offsetof(struct sigframe, sf_uc));
 

@@ -404,6 +404,8 @@ do_el1h_sync(struct thread *td, struct trapframe *frame)
 			panic("VFP exception in the kernel");
 		}
 		break;
+	case EXCP_SVE:
+		panic("SVE exception in the kernel");
 	case EXCP_INSN_ABORT:
 	case EXCP_DATA_ABORT:
 		far = READ_SPECIALREG(far_el1);
@@ -510,6 +512,12 @@ do_el0_sync(struct thread *td, struct trapframe *frame)
 		panic("VFP exception in userland");
 #endif
 		break;
+	case EXCP_SVE:
+#ifdef SVE
+		sve_state_restore();
+#else
+		panic("SVE exception in userland");
+#endif
 	case EXCP_SVC32:
 	case EXCP_SVC64:
 		svc_handler(td, frame);

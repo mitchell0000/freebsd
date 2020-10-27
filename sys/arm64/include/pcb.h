@@ -69,6 +69,11 @@ struct pcb {
 	struct vfpstate	pcb_fpustate;
 
 	struct debug_monitor_state pcb_dbg_regs;
+
+	/*
+	 * Userspace SVE state.
+	 */
+	void *pcb_svestate;
 };
 
 #ifdef _KERNEL
