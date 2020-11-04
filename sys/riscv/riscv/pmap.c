@@ -3901,7 +3901,11 @@ retry_pv_loop:
 				goto retry_pv_loop;
 			}
 		}
-		l3 = pmap_l3(pmap, pv->pv_va);
+		l2 = pmap_l2(pmap, pv->pv_va);
+		KASSERT((pmap_load(l2) & PTE_RWX) == 0,
+		    ("%s: unexpected superpage in vm_page %p's pv list",
+		     __func__, m));
+		l3 = pmap_l2_to_l3(l2, pv->pv_va);
 		oldl3 = pmap_load(l3);
 retry:
 		if ((oldl3 & PTE_W) != 0) {
