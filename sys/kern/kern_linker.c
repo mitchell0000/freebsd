@@ -55,6 +55,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/vnode.h>
 #include <sys/syscallsubr.h>
 #include <sys/sysctl.h>
+#include <sys/boottrace.h>
 
 #ifdef DDB
 #include <ddb/ddb.h>
@@ -194,6 +195,7 @@ static void
 linker_file_sysinit(linker_file_t lf)
 {
 	struct sysinit **start, **stop, **sipp, **xipp, *save;
+	int subsystem;
 
 	KLD_DPF(FILE, ("linker_file_sysinit: calling SYSINITs for %s\n",
 	    lf->filename));
@@ -225,14 +227,23 @@ linker_file_sysinit(linker_file_t lf)
 	 * Traverse the (now) ordered list of system initialization tasks.
 	 * Perform each task, and continue on to the next task.
 	 */
+	subsystem = SI_SUB_DUMMY;
 	sx_xunlock(&kld_sx);
 	mtx_lock(&Giant);
 	for (sipp = start; sipp < stop; sipp++) {
 		if ((*sipp)->subsystem == SI_SUB_DUMMY)
 			continue;	/* skip dummy task(s) */
 
+		char evntname[40];
+		if ((*sipp)->subsystem > subsystem) {
+			snprintf(evntname, sizeof(evntname), "%s: sysinit 0x%7x",
+				 lf->filename, (*sipp)->subsystem);
+			boottrace(evntname, curproc->p_comm);
+		}
+
 		/* Call function */
 		(*((*sipp)->func)) ((*sipp)->udata);
+		subsystem = (*sipp)->subsystem;
 	}
 	mtx_unlock(&Giant);
 	sx_xlock(&kld_sx);

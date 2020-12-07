@@ -84,6 +84,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/malloc.h>
 #include <sys/conf.h>
 #include <sys/cpuset.h>
+#include <sys/boottrace.h>
 
 #include <machine/cpu.h>
 
@@ -234,8 +235,8 @@ mi_startup(void)
 	struct sysinit **xipp;	/* interior loop of sort*/
 	struct sysinit *save;	/* bubble*/
 
-#if defined(VERBOSE_SYSINIT)
 	int last;
+#if defined(VERBOSE_SYSINIT)
 	int verbose;
 #endif
 
@@ -266,8 +267,8 @@ restart:
 		}
 	}
 
-#if defined(VERBOSE_SYSINIT)
 	last = SI_SUB_COPYRIGHT;
+#if defined(VERBOSE_SYSINIT)
 	verbose = 0;
 #if !defined(DDB)
 	printf("VERBOSE_SYSINIT: DDB not enabled, symbol lookups disabled.\n");
@@ -285,6 +286,12 @@ restart:
 		if ((*sipp)->subsystem == SI_SUB_DONE)
 			continue;
 
+		char evntname[32];
+		if ((*sipp)->subsystem > last) {
+			snprintf(evntname, sizeof(evntname),
+				 "sysinit 0x%7x", (*sipp)->subsystem);
+			boottrace(evntname, "kernel");
+		}
 #if defined(VERBOSE_SYSINIT)
 		if ((*sipp)->subsystem > last && verbose_sysinit != 0) {
 			verbose = 1;
@@ -331,9 +338,12 @@ restart:
 			newsysinit_end = NULL;
 			goto restart;
 		}
+
+		last = (*sipp)->subsystem;
 	}
 
 	TSEXIT();	/* Here so we don't overlap with start_init. */
+	boottrace("mi_startup done", "kernel");
 
 	mtx_assert(&Giant, MA_OWNED | MA_NOTRECURSED);
 	mtx_unlock(&Giant);

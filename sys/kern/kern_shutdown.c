@@ -50,6 +50,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/bio.h>
+#include <sys/boottrace.h>
 #include <sys/buf.h>
 #include <sys/conf.h>
 #include <sys/compressor.h>
@@ -332,6 +333,16 @@ shutdown_nice_task_fn(void *arg, int pending __unused)
 	else
 		kern_psignal(initproc, SIGINT);
 	PROC_UNLOCK(initproc);
+
+#if 0
+	shutdown_howto = howto;
+#endif
+	if (howto & RB_POWEROFF)
+		boottrace("SIGUSR2 to init(8)", NULL);
+	else if (howto & RB_HALT)
+		boottrace("SIGUSR1 to init(8)", NULL);
+	else
+		boottrace("SIGINT to init(8)", NULL);
 }
 
 static struct task shutdown_nice_task = TASK_INITIALIZER(0,
@@ -344,7 +355,9 @@ void
 shutdown_nice(int howto)
 {
 
+	//if (initproc != NULL && !SCHEDULER_STOPPED() && init_running) {
 	if (initproc != NULL && !SCHEDULER_STOPPED()) {
+		boottrace("shutdown initiated", NULL);
 		shutdown_nice_task.ta_context = (void *)(uintptr_t)howto;
 		taskqueue_enqueue(taskqueue_fast, &shutdown_nice_task);
 	} else {
@@ -420,6 +433,26 @@ doadump(boolean_t textdump)
 	return (error);
 }
 
+static void
+reboottrace(int howto)
+{
+	if (howto & RB_DUMP) {
+		if (howto & RB_HALT)
+			boottrace("system panic: halting...", NULL);
+		if (howto & RB_POWEROFF)
+			boottrace("system panic: powering off...", NULL);
+		if (!(howto & (RB_HALT|RB_POWEROFF)))
+			boottrace("system panic: rebooting...", NULL);
+	} else {
+		if (howto & RB_HALT)
+			boottrace("system halting...", NULL);
+		if (howto & RB_POWEROFF)
+			boottrace("system powering off...", NULL);
+		if (!(howto & (RB_HALT|RB_POWEROFF)))
+			boottrace("system rebooting...", NULL);
+	}
+}
+
 /*
  * Shutdown the system cleanly to prepare for reboot, halt, or power off.
  */
@@ -427,6 +460,12 @@ void
 kern_reboot(int howto)
 {
 	static int once = 0;
+
+	//if (initproc && init_running && curproc != initproc)
+	if (initproc != NULL && curproc != initproc)
+		boottrace("kernel shutdown (dirty) started", NULL);
+	else
+		boottrace("kernel shutdown (clean) started", NULL);
 
 	/*
 	 * Normal paths here don't hold Giant, but we can wind up here
@@ -455,6 +494,7 @@ kern_reboot(int howto)
 #endif
 	/* We're in the process of rebooting. */
 	rebooting = 1;
+	reboottrace(howto);
 
 	/* We are out of the debugger now. */
 	kdb_active = 0;
@@ -463,13 +503,16 @@ kern_reboot(int howto)
 	 * Do any callouts that should be done BEFORE syncing the filesystems.
 	 */
 	EVENTHANDLER_INVOKE(shutdown_pre_sync, howto);
+	boottrace("shutdown pre sync complete", NULL);
 
 	/* 
 	 * Now sync filesystems
 	 */
 	if (!cold && (howto & RB_NOSYNC) == 0 && once == 0) {
 		once = 1;
+		boottrace("bufshutdown begin", NULL);
 		bufshutdown(show_busybufs);
+		boottrace("bufshutdown end", NULL);
 	}
 
 	print_uptime();
@@ -481,11 +524,17 @@ kern_reboot(int howto)
 	 * been completed.
 	 */
 	EVENTHANDLER_INVOKE(shutdown_post_sync, howto);
+	boottrace("shutdown post sync complete", NULL);
 
 	if ((howto & (RB_HALT|RB_DUMP)) == RB_DUMP && !cold && !dumping) 
 		doadump(TRUE);
 
 	/* Now that we're going to really halt the system... */
+	boottrace("shutdown final begin", NULL);
+
+	if (shutdown_trace)
+		boottrace_dump_console();
+
 	EVENTHANDLER_INVOKE(shutdown_final, howto);
 
 	for(;;) ;	/* safety against shutdown_reset not working */
