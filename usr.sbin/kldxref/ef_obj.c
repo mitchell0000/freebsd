@@ -42,6 +42,7 @@
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <gelf.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,20 +54,20 @@
 
 typedef struct {
 	void		*addr;
-	Elf_Off		size;
+	GElf_Off	size;
 	int		flags;
 	int		sec;	/* Original section */
 	char		*name;
 } Elf_progent;
 
 typedef struct {
-	Elf_Rel		*rel;
+	GElf_Rel	*rel;
 	int		nrel;
 	int		sec;
 } Elf_relent;
 
 typedef struct {
-	Elf_Rela	*rela;
+	GElf_Rela	*rela;
 	int		nrela;
 	int		sec;
 } Elf_relaent;
@@ -74,12 +75,12 @@ typedef struct {
 struct ef_file {
 	char		*ef_name;
 	int		ef_fd;
-	Elf_Ehdr	ef_hdr;
+	GElf_Ehdr	ef_hdr;
 	struct elf_file *ef_efile;
 
 	caddr_t		address;
-	Elf_Off		size;
-	Elf_Shdr	*e_shdr;
+	GElf_Off	size;
+	GElf_Shdr	*e_shdr;
 
 	Elf_progent	*progtab;
 	int		nprogtab;
@@ -90,7 +91,7 @@ struct ef_file {
 	Elf_relent	*reltab;
 	int		nrel;
 
-	Elf_Sym		*ddbsymtab;	/* The symbol table we are using */
+	GElf_Sym	*ddbsymtab;	/* The symbol table we are using */
 	long		ddbsymcnt;	/* Number of symbols */
 	caddr_t		ddbstrtab;	/* String table */
 	long		ddbstrcnt;	/* number of bytes in string table */
@@ -103,25 +104,25 @@ struct ef_file {
 
 static int	ef_obj_get_type(elf_file_t ef);
 static int	ef_obj_close(elf_file_t ef);
-static int	ef_obj_read(elf_file_t ef, Elf_Off offset, size_t len,
+static int	ef_obj_read(elf_file_t ef, GElf_Off offset, size_t len,
 		    void* dest);
-static int	ef_obj_read_entry(elf_file_t ef, Elf_Off offset, size_t len,
+static int	ef_obj_read_entry(elf_file_t ef, GElf_Off offset, size_t len,
 		    void **ptr);
-static int	ef_obj_seg_read(elf_file_t ef, Elf_Off offset, size_t len,
+static int	ef_obj_seg_read(elf_file_t ef, GElf_Off offset, size_t len,
 		    void *dest);
-static int	ef_obj_seg_read_rel(elf_file_t ef, Elf_Off offset, size_t len,
+static int	ef_obj_seg_read_rel(elf_file_t ef, GElf_Off offset, size_t len,
 		    void *dest);
-static int	ef_obj_seg_read_string(elf_file_t ef, Elf_Off offset,
+static int	ef_obj_seg_read_string(elf_file_t ef, GElf_Off offset,
 		    size_t len, char *dest);
-static int	ef_obj_seg_read_entry(elf_file_t ef, Elf_Off offset, size_t len,
-		    void **ptr);
-static int	ef_obj_seg_read_entry_rel(elf_file_t ef, Elf_Off offset,
+static int	ef_obj_seg_read_entry(elf_file_t ef, GElf_Off offset,
 		    size_t len, void **ptr);
-static Elf_Addr	ef_obj_symaddr(elf_file_t ef, Elf_Size symidx);
+static int	ef_obj_seg_read_entry_rel(elf_file_t ef, GElf_Off offset,
+		    size_t len, void **ptr);
+static GElf_Addr ef_obj_symaddr(elf_file_t ef, Elf64_Size symidx);
 static int	ef_obj_lookup_set(elf_file_t ef, const char *name, long *startp,
 		    long *stopp, long *countp);
 static int	ef_obj_lookup_symbol(elf_file_t ef, const char* name,
-		    Elf_Sym** sym);
+		    GElf_Sym** sym);
 
 static struct elf_file_ops ef_obj_file_ops = {
 	.get_type		= ef_obj_get_type,
@@ -146,9 +147,9 @@ ef_obj_get_type(elf_file_t __unused ef)
 }
 
 static int
-ef_obj_lookup_symbol(elf_file_t ef, const char* name, Elf_Sym** sym)
+ef_obj_lookup_symbol(elf_file_t ef, const char* name, GElf_Sym** sym)
 {
-	Elf_Sym *symp;
+	GElf_Sym *symp;
 	const char *strp;
 	int i;
 
@@ -181,26 +182,26 @@ ef_obj_lookup_set(elf_file_t ef, const char *name, long *startp, long *stopp,
 	return (ESRCH);
 }
 
-static Elf_Addr
-ef_obj_symaddr(elf_file_t ef, Elf_Size symidx)
+static GElf_Addr
+ef_obj_symaddr(elf_file_t ef, GElf_Size symidx)
 {
-	const Elf_Sym *sym;
+	const GElf_Sym *sym;
 
 	if (symidx >= (size_t) ef->ddbsymcnt)
 		return (0);
 	sym = ef->ddbsymtab + symidx;
 
 	if (sym->st_shndx != SHN_UNDEF)
-		return (sym->st_value - (Elf_Addr)ef->address);
+		return (sym->st_value - (GElf_Addr)ef->address);
 	return (0);
 }
 
 static int
-ef_obj_read(elf_file_t ef, Elf_Off offset, size_t len, void *dest)
+ef_obj_read(elf_file_t ef, GElf_Off offset, size_t len, void *dest)
 {
 	ssize_t r;
 
-	if (offset != (Elf_Off)-1) {
+	if (offset != (GElf_Off)-1) {
 		if (lseek(ef->ef_fd, offset, SEEK_SET) == -1)
 			return (EIO);
 	}
@@ -213,7 +214,7 @@ ef_obj_read(elf_file_t ef, Elf_Off offset, size_t len, void *dest)
 }
 
 static int
-ef_obj_read_entry(elf_file_t ef, Elf_Off offset, size_t len, void **ptr)
+ef_obj_read_entry(elf_file_t ef, GElf_Off offset, size_t len, void **ptr)
 {
 	int error;
 
@@ -227,7 +228,7 @@ ef_obj_read_entry(elf_file_t ef, Elf_Off offset, size_t len, void **ptr)
 }
 
 static int
-ef_obj_seg_read(elf_file_t ef, Elf_Off offset, size_t len, void *dest)
+ef_obj_seg_read(elf_file_t ef, GElf_Off offset, size_t len, void *dest)
 {
 
 	if (offset + len > ef->size) {
@@ -241,12 +242,12 @@ ef_obj_seg_read(elf_file_t ef, Elf_Off offset, size_t len, void *dest)
 }
 
 static int
-ef_obj_seg_read_rel(elf_file_t ef, Elf_Off offset, size_t len, void *dest)
+ef_obj_seg_read_rel(elf_file_t ef, GElf_Off offset, size_t len, void *dest)
 {
 	char *memaddr;
-	Elf_Rel *r;
-	Elf_Rela *a;
-	Elf_Off secbase, dataoff;
+	GElf_Rel *r;
+	GElf_Rela *a;
+	GElf_Off secbase, dataoff;
 	int error, i, sec;
 
 	if (offset + len > ef->size) {
@@ -304,7 +305,7 @@ ef_obj_seg_read_rel(elf_file_t ef, Elf_Off offset, size_t len, void *dest)
 }
 
 static int
-ef_obj_seg_read_string(elf_file_t ef, Elf_Off offset, size_t len, char *dest)
+ef_obj_seg_read_string(elf_file_t ef, GElf_Off offset, size_t len, char *dest)
 {
 
 	if (offset >= ef->size) {
@@ -325,7 +326,7 @@ ef_obj_seg_read_string(elf_file_t ef, Elf_Off offset, size_t len, char *dest)
 }
 
 static int
-ef_obj_seg_read_entry(elf_file_t ef, Elf_Off offset, size_t len, void **ptr)
+ef_obj_seg_read_entry(elf_file_t ef, GElf_Off offset, size_t len, void **ptr)
 {
 	int error;
 
@@ -339,7 +340,7 @@ ef_obj_seg_read_entry(elf_file_t ef, Elf_Off offset, size_t len, void **ptr)
 }
 
 static int
-ef_obj_seg_read_entry_rel(elf_file_t ef, Elf_Off offset, size_t len,
+ef_obj_seg_read_entry_rel(elf_file_t ef, GElf_Off offset, size_t len,
     void **ptr)
 {
 	int error;
@@ -357,9 +358,10 @@ int
 ef_obj_open(const char *filename, struct elf_file *efile, int verbose)
 {
 	elf_file_t ef;
-	Elf_Ehdr *hdr;
-	Elf_Shdr *shdr;
-	Elf_Sym *es;
+	GElf_Ehdr *hdr;
+	GElf_Shdr *shdr;
+	GElf_Sym *es;
+	Elf *elf;
 	char *mapbase;
 	void *vtmp;
 	size_t mapsize, alignmask, max_addralign;
@@ -370,6 +372,8 @@ ef_obj_open(const char *filename, struct elf_file *efile, int verbose)
 		return (EINVAL);
 	if ((fd = open(filename, O_RDONLY)) == -1)
 		return (errno);
+	if ((elf = elf_begin(fd, ELF_C_READ, NULL)) == NULL)
+		return (EINVAL);
 
 	ef = calloc(1, sizeof(*ef));
 	if (ef == NULL) {
@@ -384,12 +388,14 @@ ef_obj_open(const char *filename, struct elf_file *efile, int verbose)
 	ef->ef_fd = fd;
 	ef->ef_name = strdup(filename);
 	ef->ef_efile = efile;
-	hdr = (Elf_Ehdr *)&ef->ef_hdr;
+	hdr = (GElf_Ehdr *)&ef->ef_hdr;
 
-	res = read(fd, hdr, sizeof(*hdr));
-	error = EFTYPE;
-	if (res != sizeof(*hdr))
+	if (gelf_getehdr(elf, hdr) == NULL)
 		goto out;
+	//res = read(fd, hdr, sizeof(*hdr));
+	error = EFTYPE;
+	//if (res != sizeof(*hdr))
+	//	goto out;
 	if (!IS_ELF(*hdr))
 		goto out;
 	if (hdr->e_ident[EI_CLASS] != ELF_TARG_CLASS ||
@@ -401,7 +407,7 @@ ef_obj_open(const char *filename, struct elf_file *efile, int verbose)
 
 	nbytes = hdr->e_shnum * hdr->e_shentsize;
 	if (nbytes == 0 || hdr->e_shoff == 0 ||
-	    hdr->e_shentsize != sizeof(Elf_Shdr))
+	    hdr->e_shentsize != sizeof(GElf_Shdr))
 		goto out;
 
 	if (ef_obj_read_entry(ef, hdr->e_shoff, nbytes, &vtmp) != 0) {
@@ -465,7 +471,7 @@ ef_obj_open(const char *filename, struct elf_file *efile, int verbose)
 		goto out;
 	}
 
-	ef->ddbsymcnt = shdr[symtabindex].sh_size / sizeof(Elf_Sym);
+	ef->ddbsymcnt = shdr[symtabindex].sh_size / sizeof(GElf_Sym);
 	if (ef_obj_read_entry(ef, shdr[symtabindex].sh_offset,
 	    shdr[symtabindex].sh_size, (void**)&ef->ddbsymtab) != 0) {
 		printf("ef_read_entry failed\n");
@@ -557,13 +563,13 @@ ef_obj_open(const char *filename, struct elf_file *efile, int verbose)
 				es = &ef->ddbsymtab[j];
 				if (es->st_shndx != i)
 					continue;
-				es->st_value += (Elf_Addr)ef->progtab[pb].addr;
+				es->st_value += (GElf_Addr)ef->progtab[pb].addr;
 			}
 			mapbase += shdr[i].sh_size;
 			pb++;
 			break;
 		case SHT_REL:
-			ef->reltab[rl].nrel = shdr[i].sh_size / sizeof(Elf_Rel);
+			ef->reltab[rl].nrel = shdr[i].sh_size / sizeof(GElf_Rel);
 			ef->reltab[rl].sec = shdr[i].sh_info;
 			if (ef_obj_read_entry(ef, shdr[i].sh_offset,
 			    shdr[i].sh_size, (void**)&ef->reltab[rl].rel) !=
@@ -575,7 +581,7 @@ ef_obj_open(const char *filename, struct elf_file *efile, int verbose)
 			break;
 		case SHT_RELA:
 			ef->relatab[ra].nrela =
-			    shdr[i].sh_size / sizeof(Elf_Rela);
+			    shdr[i].sh_size / sizeof(GElf_Rela);
 			ef->relatab[ra].sec = shdr[i].sh_info;
 			if (ef_obj_read_entry(ef, shdr[i].sh_offset,
 			    shdr[i].sh_size, (void**)&ef->relatab[ra].rela) !=

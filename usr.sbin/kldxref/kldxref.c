@@ -49,6 +49,7 @@
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
+#include <gelf.h>
 #include <fts.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -390,13 +391,13 @@ parse_entry(struct mod_metadata *md, const char *cval,
 	struct mod_version mdv;
 	struct mod_pnp_match_info pnp;
 	char descr[1024];
-	Elf_Off data;
+	GElf_Off data;
 	int error, i;
 	size_t len;
 	char *walker;
 	void *table;
 
-	data = (Elf_Off)md->md_data;
+	data = (GElf_Off)md->md_data;
 	error = 0;
 	record_start();
 	switch (md->md_type) {
@@ -429,7 +430,7 @@ parse_entry(struct mod_metadata *md, const char *cval,
 		break;
 	case MDT_PNP_INFO:
 		check(EF_SEG_READ_REL(ef, data, sizeof(pnp), &pnp));
-		check(EF_SEG_READ_STRING(ef, (Elf_Off)pnp.descr, sizeof(descr), descr));
+		check(EF_SEG_READ_STRING(ef, (GElf_Off)pnp.descr, sizeof(descr), descr));
 		descr[sizeof(descr) - 1] = '\0';
 		if (dflag) {
 			printf("  pnp info for bus %s format %s %d entries of %d bytes\n",
@@ -454,7 +455,7 @@ parse_entry(struct mod_metadata *md, const char *cval,
 			record_int(pnp.num_entry);
 			len = pnp.num_entry * pnp.entry_len;
 			walker = table = malloc(len);
-			check(EF_SEG_READ_REL(ef, (Elf_Off)pnp.table, len, table));
+			check(EF_SEG_READ_REL(ef, (GElf_Off)pnp.table, len, table));
 
 			/*
 			 * Walk the list and output things. We've collapsed all the
@@ -519,7 +520,7 @@ parse_entry(struct mod_metadata *md, const char *cval,
 							ptr = *(char **)(walker + elt->pe_offset);
 							buffer[0] = '\0';
 							if (ptr != NULL) {
-								EF_SEG_READ_STRING(ef, (Elf_Off)ptr,
+								EF_SEG_READ_STRING(ef, (GElf_Off)ptr,
 								    sizeof(buffer), buffer);
 								buffer[sizeof(buffer) - 1] = '\0';
 							}
@@ -599,9 +600,9 @@ read_kld(char *filename, char *kldname)
 		 * in the same kld.
 		 */
 		for (i = 0; i < entries; i++) {
-			check(EF_SEG_READ_REL(&ef, (Elf_Off)p[i], sizeof(md),
+			check(EF_SEG_READ_REL(&ef, (GElf_Off)p[i], sizeof(md),
 			    &md));
-			check(EF_SEG_READ_STRING(&ef, (Elf_Off)md.md_cval,
+			check(EF_SEG_READ_STRING(&ef, (GElf_Off)md.md_cval,
 			    sizeof(cval), cval));
 			if (md.md_type == MDT_MODULE) {
 				parse_entry(&md, cval, &ef, kldname);
@@ -617,9 +618,9 @@ read_kld(char *filename, char *kldname)
 		 * Second pass for all !MDT_MODULE entries.
 		 */
 		for (i = 0; i < entries; i++) {
-			check(EF_SEG_READ_REL(&ef, (Elf_Off)p[i], sizeof(md),
+			check(EF_SEG_READ_REL(&ef, (GElf_Off)p[i], sizeof(md),
 			    &md));
-			check(EF_SEG_READ_STRING(&ef, (Elf_Off)md.md_cval,
+			check(EF_SEG_READ_STRING(&ef, (GElf_Off)md.md_cval,
 			    sizeof(cval), cval));
 			if (md.md_type != MDT_MODULE)
 				parse_entry(&md, cval, &ef, kldname);
