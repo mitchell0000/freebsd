@@ -251,6 +251,17 @@ Configuration file for
 .Xr ddb 8 .
 Default
 .Pa /etc/ddb.conf .
+.It Va devmatch_enable
+.Pq Vt bool
+If set to
+.Dq Li NO ,
+disable auto-loading of kernel modules with
+.Xr devmatch 8 .
+.It Va devmatch_blacklist
+.Pq Vt str
+A whitespace-separated list of kernel modules to be ignored by
+.Xr devmatch 8 .
+These modules will not be auto-loaded, even if compatible hardware is detected.
 .It Va kld_list
 .Pq Vt str
 A whitespace-separated list of kernel modules to load right after
