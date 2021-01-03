@@ -16,4 +16,6 @@ GRTAGS
 GTAGS
 ID
 cscope.out
-?cscope.out
+cscope.files
+cscope.in.out
+cscope.po.out
