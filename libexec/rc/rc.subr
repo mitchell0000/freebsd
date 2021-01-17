@@ -2184,6 +2184,13 @@ _echoonce()
 	esac
 }
 
+boottrace()
+{
+	if [ -n "$1" ]; then
+		$SYSCTL_N sysvar.boottimes.boottimes="$1" > /dev/null 2>&1
+	fi
+}
+
 # If the loader env variable rc.debug is set, turn on debugging. rc.conf will
 # still override this, but /etc/defaults/rc.conf can't unconditionally set this
 # since it would undo what we've done here.
