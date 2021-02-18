@@ -264,6 +264,10 @@ int	set_fpregs32(struct thread *, struct fpreg32 *);
 int	fill_dbregs32(struct thread *, struct dbreg32 *);
 int	set_dbregs32(struct thread *, struct dbreg32 *);
 #endif
+
+int dbreg_set_watchpoint(vm_offset_t addr, vm_size_t size);
+int dbreg_clr_watchpoint(vm_offset_t addr, vm_size_t size);
+void dbreg_list_watchpoints(void);
 #endif
 
 #endif /* !_MACHINE_REG_H_ */
