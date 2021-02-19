@@ -33,8 +33,12 @@
 
 #include <machine/frame.h>
 #include <machine/psl.h>
+#include <machine/reg.h>
 
 #define	KDB_STOPPEDPCB(pc)	&stoppcbs[pc->pc_cpuid]
+
+int kdb_cpu_set_watchpoint(vm_offset_t addr, vm_size_t size, int access);
+int kdb_cpu_clr_watchpoint(vm_offset_t addr, vm_size_t size);
 
 static __inline void
 kdb_cpu_clear_singlestep(void)
