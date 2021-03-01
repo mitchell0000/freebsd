@@ -85,58 +85,9 @@
 #define	BYTE_ORDER	_BYTE_ORDER
 #endif
 
-#if defined(__GNUCLIKE_BUILTIN_CONSTANT_P)
-#define	__is_constant(x)	__builtin_constant_p(x)
-#else
-#define	__is_constant(x)	0
-#endif
-
-#define	__bswap16_const(x)	((((__uint16_t)(x) >> 8) & 0xff) |	\
-	(((__uint16_t)(x) << 8) & 0xff00))
-#define	__bswap32_const(x)	((((__uint32_t)(x) >> 24) & 0xff) |	\
-	(((__uint32_t)(x) >> 8) & 0xff00) |				\
-	(((__uint32_t)(x)<< 8) & 0xff0000) |				\
-	(((__uint32_t)(x) << 24) & 0xff000000))
-#define	__bswap64_const(x)	((((__uint64_t)(x) >> 56) & 0xff) |	\
-	(((__uint64_t)(x) >> 40) & 0xff00) |				\
-	(((__uint64_t)(x) >> 24) & 0xff0000) |				\
-	(((__uint64_t)(x) >> 8) & 0xff000000) |				\
-	(((__uint64_t)(x) << 8) & ((__uint64_t)0xff << 32)) |		\
-	(((__uint64_t)(x) << 24) & ((__uint64_t)0xff << 40)) |		\
-	(((__uint64_t)(x) << 40) & ((__uint64_t)0xff << 48)) |		\
-	(((__uint64_t)(x) << 56) & ((__uint64_t)0xff << 56)))
-
-static __inline __uint16_t
-__bswap16_var(__uint16_t _x)
-{
-
-	return ((_x >> 8) | ((_x << 8) & 0xff00));
-}
-
-static __inline __uint32_t
-__bswap32_var(__uint32_t _x)
-{
-
-	return ((_x >> 24) | ((_x >> 8) & 0xff00) | ((_x << 8) & 0xff0000) |
-	    ((_x << 24) & 0xff000000));
-}
-
-static __inline __uint64_t
-__bswap64_var(__uint64_t _x)
-{
-
-	return ((_x >> 56) | ((_x >> 40) & 0xff00) | ((_x >> 24) & 0xff0000) |
-	    ((_x >> 8) & 0xff000000) | ((_x << 8) & ((__uint64_t)0xff << 32)) |
-	    ((_x << 24) & ((__uint64_t)0xff << 40)) |
-	    ((_x << 40) & ((__uint64_t)0xff << 48)) | ((_x << 56)));
-}
-
-#define	__bswap16(x)	((__uint16_t)(__is_constant(x) ? __bswap16_const(x) : \
-	__bswap16_var(x)))
-#define	__bswap32(x)	(__is_constant(x) ? __bswap32_const(x) : \
-	__bswap32_var(x))
-#define	__bswap64(x)	(__is_constant(x) ? __bswap64_const(x) : \
-	__bswap64_var(x))
+#define	__bswap16(x)	__builtin_bswap16(x)
+#define	__bswap32(x)	__builtin_bswap32(x)
+#define	__bswap64(x)	__builtin_bswap64(x)
 
 #ifdef __LITTLE_ENDIAN__
 #define	__htonl(x)	(__bswap32((__uint32_t)(x)))
