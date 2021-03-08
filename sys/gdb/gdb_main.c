@@ -618,6 +618,104 @@ gdb_handle_detach(void)
 #endif
 }
 
+/*
+ * Handle a 'Z' packet: set a breakpoint or watchpoint.
+ *
+ * Currently, only watchpoints are supported.
+ */
+static void
+gdb_z_insert(void)
+{
+	intmax_t addr, length;
+	char ztype;
+	int error;
+
+	ztype = gdb_rx_char();
+	if (gdb_rx_char() != ',' || gdb_rx_varhex(&addr) ||
+	    gdb_rx_char() != ',' || gdb_rx_varhex(&length)) {
+		error = EINVAL;
+		goto fail;
+	}
+
+	switch (ztype) {
+	case '2': /* write watchpoint */
+		error = kdb_cpu_set_watchpoint((vm_offset_t)addr,
+		    (vm_size_t)length, KDB_DBG_ACCESS_W);
+		if (error != 0)
+			goto fail;
+		break;
+	case '3': /* read watchpoint */
+		error = kdb_cpu_set_watchpoint((vm_offset_t)addr,
+		    (vm_size_t)length, KDB_DBG_ACCESS_R);
+		if (error != 0)
+			goto fail;
+		break;
+	case '4': /* access (RW) watchpoint */
+		error = kdb_cpu_set_watchpoint((vm_offset_t)addr,
+		    (vm_size_t)length, KDB_DBG_ACCESS_RW);
+		if (error != 0)
+			goto fail;
+		break;
+	case '1': /* hardware breakpoint */
+	case '0': /* software breakpoint */
+		/* Not implemented. */
+		gdb_tx_empty();
+		return;
+	default:
+		error = EINVAL;
+		goto fail;
+	}
+	gdb_tx_ok();
+	return;
+fail:
+	gdb_tx_err(error);
+	return;
+}
+
+/*
+ * Handle a 'z' packet; clear a breakpoint or watchpoint.
+ *
+ * Currently, only watchpoints are supported.
+ */
+static void
+gdb_z_remove(void)
+{
+	intmax_t addr, length;
+	char ztype;
+	int error;
+
+	ztype = gdb_rx_char();
+	if (gdb_rx_char() != ',' || gdb_rx_varhex(&addr) ||
+	    gdb_rx_char() != ',' || gdb_rx_varhex(&length)) {
+		error = EINVAL;
+		goto fail;
+	}
+
+	switch (ztype) {
+	case '2': /* write watchpoint */
+	case '3': /* read watchpoint */
+	case '4': /* access (RW) watchpoint */
+		error = kdb_cpu_clr_watchpoint((vm_offset_t)addr,
+		    (vm_size_t)length);
+		if (error != 0)
+			goto fail;
+		break;
+	case '1': /* hardware breakpoint */
+	case '0': /* software breakpoint */
+		/* Not implemented. */
+		gdb_tx_empty();
+		return;
+	default:
+		error = EINVAL;
+		goto fail;
+	}
+	gdb_tx_ok();
+	return;
+fail:
+	gdb_tx_err(error);
+	return;
+}
+
 static int
 gdb_trap(int type, int code)
 {
@@ -866,6 +964,14 @@ gdb_trap(int type, int code)
 				gdb_tx_ok();
 			else
 				gdb_tx_err(ENOENT);
+			break;
+		}
+		case 'z': {	/* Remove watchpoint. */
+			gdb_z_remove();
+			break;
+		}
+		case 'Z': {	/* Set watchpoint. */
+			gdb_z_insert();
 			break;
 		}
 		case EOF:
