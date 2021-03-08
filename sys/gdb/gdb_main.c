@@ -716,6 +716,28 @@ fail:
 	return;
 }
 
+/*
+ * Communicate the stop reason for the trap to the gdb client.
+ *
+ * Normally, this is simply "thread:$tid". We can prepend more specific trap
+ * reasons when they are detected, such as the address that triggered a
+ * watchpoint. Doing so is never required, however.
+ *
+ * https://sourceware.org/gdb/onlinedocs/gdb/Stop-Reply-Packets.html
+ */
+static void
+gdb_trap_reason(int type)
+{
+	uintptr_t watch_addr;
+
+	if (gdb_is_watchpoint_trap(type, &watch_addr)) {
+		gdb_tx_str("watch:");
+		gdb_tx_varhex(watch_addr);
+	}
+	gdb_tx_str("thread:");
+	gdb_tx_varhex((uintmax_t)kdb_thread->td_tid);
+}
+
 static int
 gdb_trap(int type, int code)
 {
@@ -745,8 +767,7 @@ gdb_trap(int type, int code)
 	gdb_tx_char(':');
 	gdb_tx_reg(GDB_REG_PC);
 	gdb_tx_char(';');
-	gdb_tx_str("thread:");
-	gdb_tx_varhex((long)kdb_thread->td_tid);
+	gdb_trap_reason(type);
 	gdb_tx_char(';');
 	gdb_tx_end();			/* XXX check error condition. */
 

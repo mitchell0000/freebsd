@@ -72,5 +72,6 @@ void *gdb_cpu_getreg(int, size_t *);
 void gdb_cpu_setreg(int, void *);
 int gdb_cpu_signal(int, int);
 void gdb_end_write(void *);
+bool gdb_is_watchpoint_trap(int type, uintptr_t *addr);
 
 #endif /* !_MACHINE_GDB_MACHDEP_H_ */

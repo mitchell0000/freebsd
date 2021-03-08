@@ -78,4 +78,12 @@ void *gdb_cpu_getreg(int, size_t *);
 void gdb_cpu_setreg(int, void *);
 int gdb_cpu_signal(int, int);
 
+static __inline bool
+gdb_is_watchpoint_trap(int type __unused, uintptr_t *addr __unused)
+{
+
+	/* Return false since we can't trivially find addr. */
+	return (false);
+}
+
 #endif /* !_MACHINE_GDB_MACHDEP_H_ */

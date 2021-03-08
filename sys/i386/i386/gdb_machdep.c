@@ -36,11 +36,12 @@ __FBSDID("$FreeBSD$");
 #include <sys/proc.h>
 #include <sys/signal.h>
 
+#include <machine/endian.h>
+#include <machine/frame.h>
 #include <machine/gdb_machdep.h>
 #include <machine/pcb.h>
+#include <machine/reg.h>
 #include <machine/trap.h>
-#include <machine/frame.h>
-#include <machine/endian.h>
 
 #include <gdb/gdb.h>
 
@@ -113,4 +114,34 @@ gdb_cpu_signal(int type, int code)
 	case T_XMMFLT: return (SIGFPE);
 	}
 	return (SIGEMT);
+}
+
+bool
+gdb_is_watchpoint_trap(int type, uintptr_t *addr)
+{
+	uint64_t dr6;
+
+	if (type != T_TRCTRAP)
+		return (false);
+
+	dr6 = rdr6();
+	load_dr6(dr6 & ~DBREG_DR6_BMASK);
+
+	if ((dr6 & DBREG_DR6_B(0)) != 0) {
+		*addr = rdr0();
+		return (true);
+	}
+	if ((dr6 & DBREG_DR6_B(1)) != 0) {
+		*addr = rdr1();
+		return (true);
+	}
+	if ((dr6 & DBREG_DR6_B(2)) != 0) {
+		*addr = rdr2();
+		return (true);
+	}
+	if ((dr6 & DBREG_DR6_B(3)) != 0) {
+		*addr = rdr3();
+		return (true);
+	}
+	return (false);
 }

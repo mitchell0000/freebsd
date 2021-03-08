@@ -152,6 +152,36 @@ gdb_cpu_signal(int type, int code)
 	return (SIGEMT);
 }
 
+bool
+gdb_is_watchpoint_trap(int type, uintptr_t *addr)
+{
+	uint64_t dr6;
+
+	if (type != T_TRCTRAP)
+		return (false);
+
+	dr6 = rdr6();
+	load_dr6(dr6 & ~DBREG_DR6_BMASK);
+
+	if ((dr6 & DBREG_DR6_B(0)) != 0) {
+		*addr = rdr0();
+		return (true);
+	}
+	if ((dr6 & DBREG_DR6_B(1)) != 0) {
+		*addr = rdr1();
+		return (true);
+	}
+	if ((dr6 & DBREG_DR6_B(2)) != 0) {
+		*addr = rdr2();
+		return (true);
+	}
+	if ((dr6 & DBREG_DR6_B(3)) != 0) {
+		*addr = rdr3();
+		return (true);
+	}
+	return (false);
+}
+
 void *
 gdb_begin_write(void)
 {

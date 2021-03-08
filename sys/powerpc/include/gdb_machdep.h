@@ -128,6 +128,13 @@ gdb_end_write(void *arg __unused)
 
 }
 
+static __inline bool
+gdb_is_watchpoint_trap(int type __unused, uintptr_t *addr __unused)
+{
+
+	return (false);
+}
+
 void *gdb_cpu_getreg(int, size_t *);
 void gdb_cpu_setreg(int, void *);
 int gdb_cpu_signal(int, int);
